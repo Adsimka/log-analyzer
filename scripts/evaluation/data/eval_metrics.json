@@ -1,0 +1,18 @@
+{
+  "n_samples": 62536,
+  "n_gt_clusters": 9,
+  "n_pred_clusters": 10,
+  "ari": 0.7038,
+  "nmi": 0.8013,
+  "homogeneity": 0.8366,
+  "completeness": 0.7674,
+  "v_measure": 0.8005,
+  "purity": 0.8461,
+  "silhouette_score": 0.6094,
+  "noise_ratio": 0.051,
+  "clustering_result_summary": {
+    "num_clusters": 10,
+    "unique_templates": 98,
+    "total_logs": 3740
+  }
+}

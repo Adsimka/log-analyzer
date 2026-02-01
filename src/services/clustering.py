@@ -1,0 +1,474 @@
+"""
+Сервис кластеризации лог-шаблонов.
+
+Выполняет полный пайплайн:
+1. Извлечение шаблонов и эмбеддингов из БД за заданный период.
+2. UMAP — снижение размерности.
+3. HDBSCAN — кластеризация.
+4. c-TF-IDF — извлечение ключевых слов.
+5. Формирование и сохранение результата.
+"""
+
+import json
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+
+import hdbscan
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import silhouette_score
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from umap import UMAP
+
+from src.core.config import get_settings
+from src.core.logging import get_logger
+from src.core.utils import parse_period
+from src.db.models import ClusterResult, LogRecord, Template
+from src.services.embedding import EmbeddingService
+
+logger = get_logger(__name__)
+
+
+class ClusteringService:
+    """
+    Выполняет кластеризацию шаблонов для одного микросервиса и периода.
+    """
+
+    def __init__(self, redis_client) -> None:
+        self._redis = redis_client
+        self._settings = get_settings()
+
+    async def cluster(
+        self,
+        session: AsyncSession,
+        microservice: str,
+        period: str,
+    ) -> dict | None:
+        """
+        Выполнить полный цикл кластеризации.
+
+        Args:
+            session: сессия БД
+            microservice: имя микросервиса
+            period: строка периода ('1h', '24h', '3d', ...)
+
+        Returns:
+            dict с результатом или None, если недостаточно данных.
+        """
+        s = self._settings
+        delta = parse_period(period)
+        cutoff = datetime.now(timezone.utc) - delta
+
+        # ──────────────────────────────────
+        # Шаг 1: Извлечение данных из БД
+        # ──────────────────────────────────
+        template_data = await self._fetch_template_data(session, microservice, cutoff)
+
+        if len(template_data) < s.min_templates_for_clustering:
+            logger.info(
+                "clustering_skipped_insufficient_data",
+                microservice=microservice,
+                period=period,
+                templates=len(template_data),
+            )
+            return None
+
+        # Разбираем данные
+        template_ids: list[int] = []
+        template_texts: list[str] = []
+        embeddings_list: list[np.ndarray] = []
+        log_counts: list[int] = []
+        error_counts: list[int] = []
+        warn_counts: list[int] = []
+        host_maps: list[dict[str, int]] = []
+        stacktrace_patterns: list[str | None] = []
+
+        for row in template_data:
+            if row["embedding"] is None:
+                continue
+
+            template_ids.append(row["template_id"])
+            template_texts.append(row["template_text"])
+            embeddings_list.append(
+                EmbeddingService.deserialize_embedding(row["embedding"])
+            )
+            log_counts.append(row["log_count"])
+            error_counts.append(row["error_count"])
+            warn_counts.append(row["warn_count"])
+            host_maps.append(row["host_distribution"])
+            stacktrace_patterns.append(row["stacktrace_pattern"])
+
+        if len(embeddings_list) < s.min_templates_for_clustering:
+            return None
+
+        embeddings = np.array(embeddings_list)
+        total_logs = sum(log_counts)
+
+        logger.info(
+            "clustering_started",
+            microservice=microservice,
+            period=period,
+            templates=len(template_ids),
+            total_logs=total_logs,
+        )
+
+        # ──────────────────────────────────
+        # Шаг 2: UMAP (опционально)
+        # ──────────────────────────────────
+        if len(embeddings) > s.skip_umap_threshold:
+            reducer = UMAP(
+                n_components=min(s.umap_n_components, len(embeddings) - 2),
+                n_neighbors=min(s.umap_n_neighbors, len(embeddings) - 1),
+                min_dist=s.umap_min_dist,
+                metric=s.umap_metric,
+                random_state=42,
+            )
+            reduced = reducer.fit_transform(embeddings)
+        else:
+            reduced = embeddings
+
+        # ──────────────────────────────────
+        # Шаг 3: HDBSCAN
+        # ──────────────────────────────────
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=s.hdbscan_min_cluster_size,
+            min_samples=s.hdbscan_min_samples,
+            metric=s.hdbscan_metric,
+            cluster_selection_method=s.hdbscan_cluster_selection_method,
+        )
+        labels = clusterer.fit_predict(reduced)
+
+        # ──────────────────────────────────
+        # Шаг 4: Оценка качества
+        # ──────────────────────────────────
+        unique_labels = set(labels)
+        num_clusters = len(unique_labels - {-1})
+        noise_count = int(np.sum(labels == -1))
+        noise_ratio = noise_count / len(labels) if len(labels) > 0 else 0.0
+
+        score = None
+        if num_clusters >= 2 and noise_count < len(labels):
+            non_noise_mask = labels != -1
+            if np.sum(non_noise_mask) > num_clusters:
+                try:
+                    score = float(
+                        silhouette_score(reduced[non_noise_mask], labels[non_noise_mask])
+                    )
+                except ValueError:
+                    score = None
+
+        # ──────────────────────────────────
+        # Шаг 5: c-TF-IDF и формирование кластеров
+        # ──────────────────────────────────
+        clusters_detail = []
+
+        for cluster_id in sorted(unique_labels - {-1}):
+            cluster_mask = labels == cluster_id
+            cluster_indices = np.where(cluster_mask)[0]
+
+            cluster_info = self._build_cluster_info(
+                cluster_id=int(cluster_id),
+                indices=cluster_indices,
+                template_texts=template_texts,
+                log_counts=log_counts,
+                error_counts=error_counts,
+                warn_counts=warn_counts,
+                host_maps=host_maps,
+                stacktrace_patterns=stacktrace_patterns,
+                total_logs=total_logs,
+                all_template_texts=template_texts,
+                all_labels=labels,
+            )
+            clusters_detail.append(cluster_info)
+
+        # Некластеризованные (noise)
+        noise_indices = np.where(labels == -1)[0]
+        unclustered = self._build_unclustered_info(
+            indices=noise_indices,
+            template_texts=template_texts,
+            log_counts=log_counts,
+            stacktrace_patterns=stacktrace_patterns,
+            total_logs=total_logs,
+        )
+
+        # ──────────────────────────────────
+        # Шаг 6: Сборка результата
+        # ──────────────────────────────────
+        now = datetime.now(timezone.utc)
+
+        result = {
+            "microservice": microservice,
+            "period": period,
+            "computed_at": now.isoformat(),
+            "data_up_to": now.isoformat(),
+            "total_logs": total_logs,
+            "unique_templates": len(template_ids),
+            "num_clusters": num_clusters,
+            "noise_ratio": round(noise_ratio, 4),
+            "silhouette_score": round(score, 4) if score is not None else None,
+            "clusters": clusters_detail,
+            "unclustered": unclustered,
+        }
+
+        # ──────────────────────────────────
+        # Шаг 7: Сохранение
+        # ──────────────────────────────────
+        await self._save_result(session, microservice, period, result)
+
+        # Кэш в Redis
+        cache_key = f"cluster:latest:{microservice}:{period}"
+        self._redis.set(cache_key, json.dumps(result, default=str), ex=3600)
+
+        logger.info(
+            "clustering_completed",
+            microservice=microservice,
+            period=period,
+            num_clusters=num_clusters,
+            noise_ratio=round(noise_ratio, 4),
+            silhouette_score=round(score, 4) if score else None,
+        )
+
+        return result
+
+    async def _fetch_template_data(
+        self,
+        session: AsyncSession,
+        microservice: str,
+        cutoff: datetime,
+    ) -> list[dict]:
+        """
+        Получить агрегированные данные шаблонов за период.
+
+        Для каждого шаблона: эмбеддинг, количество логов,
+        распределение по level и host.
+
+        Используем два простых запроса вместо одного сложного:
+        1. Основная агрегация (count, error/warn).
+        2. Host-распределение отдельно.
+        """
+        # Запрос 1: основная агрегация по шаблонам
+        main_stmt = text("""
+            SELECT
+                t.id AS template_id,
+                t.template_text,
+                t.embedding,
+                t.stacktrace_pattern,
+                COUNT(l.id) AS log_count,
+                SUM(CASE WHEN l.level = 'ERROR' THEN 1 ELSE 0 END) AS error_count,
+                SUM(CASE WHEN l.level = 'WARN' THEN 1 ELSE 0 END) AS warn_count
+            FROM templates t
+            JOIN logs l ON l.template_id = t.id
+            WHERE l.microservice = :microservice
+              AND l.timestamp > :cutoff
+            GROUP BY t.id, t.template_text, t.embedding, t.stacktrace_pattern
+        """)
+
+        main_result = await session.execute(
+            main_stmt, {"microservice": microservice, "cutoff": cutoff}
+        )
+        main_rows = main_result.mappings().all()
+
+        if not main_rows:
+            return []
+
+        # Запрос 2: host-распределение по шаблонам
+        host_stmt = text("""
+            SELECT
+                l.template_id,
+                l.host,
+                COUNT(*) AS cnt
+            FROM logs l
+            WHERE l.microservice = :microservice
+              AND l.timestamp > :cutoff
+              AND l.template_id IS NOT NULL
+            GROUP BY l.template_id, l.host
+        """)
+
+        host_result = await session.execute(
+            host_stmt, {"microservice": microservice, "cutoff": cutoff}
+        )
+
+        # Собираем host-распределение в словарь {template_id: {host: count}}
+        host_dist: dict[int, dict[str, int]] = defaultdict(dict)
+        for row in host_result.mappings():
+            host_dist[row["template_id"]][row["host"]] = row["cnt"]
+
+        # Объединяем
+        result = []
+        for row in main_rows:
+            result.append({
+                "template_id": row["template_id"],
+                "template_text": row["template_text"],
+                "embedding": row["embedding"],
+                "stacktrace_pattern": row["stacktrace_pattern"],
+                "log_count": row["log_count"],
+                "error_count": row["error_count"],
+                "warn_count": row["warn_count"],
+                "host_distribution": host_dist.get(row["template_id"], {}),
+            })
+
+        return result
+
+    def _build_cluster_info(
+        self,
+        cluster_id: int,
+        indices: np.ndarray,
+        template_texts: list[str],
+        log_counts: list[int],
+        error_counts: list[int],
+        warn_counts: list[int],
+        host_maps: list[dict],
+        stacktrace_patterns: list[str | None],
+        total_logs: int,
+        all_template_texts: list[str],
+        all_labels: np.ndarray,
+    ) -> dict:
+        """Построить описание одного кластера."""
+        cluster_logs = sum(log_counts[i] for i in indices)
+        percentage = (cluster_logs / total_logs * 100) if total_logs > 0 else 0
+
+        # Топ шаблонов по частоте
+        templates_with_counts = sorted(
+            [
+                {
+                    "template_text": template_texts[i],
+                    "log_count": log_counts[i],
+                    "stacktrace_pattern": stacktrace_patterns[i],
+                }
+                for i in indices
+            ],
+            key=lambda x: x["log_count"],
+            reverse=True,
+        )
+
+        # Level distribution
+        total_errors = sum(error_counts[i] for i in indices)
+        total_warns = sum(warn_counts[i] for i in indices)
+        level_total = total_errors + total_warns
+        level_dist = {}
+        if level_total > 0:
+            if total_errors > 0:
+                level_dist["ERROR"] = round(total_errors / level_total, 3)
+            if total_warns > 0:
+                level_dist["WARN"] = round(total_warns / level_total, 3)
+
+        # Host distribution
+        merged_hosts: Counter = Counter()
+        for i in indices:
+            if isinstance(host_maps[i], dict):
+                for host, count in host_maps[i].items():
+                    merged_hosts[host] += count
+
+        # Keywords через c-TF-IDF
+        keywords = self._extract_keywords(
+            cluster_id, all_template_texts, all_labels
+        )
+
+        return {
+            "cluster_id": cluster_id,
+            "size": cluster_logs,
+            "percentage": round(percentage, 2),
+            "keywords": keywords,
+            "top_templates": templates_with_counts[:5],
+            "level_distribution": level_dist,
+            "host_distribution": dict(merged_hosts.most_common(10)),
+            "time_trend": "stable",
+        }
+
+    def _build_unclustered_info(
+        self,
+        indices: np.ndarray,
+        template_texts: list[str],
+        log_counts: list[int],
+        stacktrace_patterns: list[str | None],
+        total_logs: int,
+    ) -> dict:
+        """Построить описание некластеризованных шаблонов."""
+        noise_logs = sum(log_counts[i] for i in indices)
+        percentage = (noise_logs / total_logs * 100) if total_logs > 0 else 0
+
+        templates = [
+            {
+                "template_text": template_texts[i],
+                "log_count": log_counts[i],
+                "stacktrace_pattern": stacktrace_patterns[i],
+            }
+            for i in indices
+        ]
+
+        return {
+            "size": noise_logs,
+            "percentage": round(percentage, 2),
+            "templates": sorted(templates, key=lambda x: x["log_count"], reverse=True)[
+                :10
+            ],
+        }
+
+    @staticmethod
+    def _extract_keywords(
+        target_cluster_id: int,
+        all_texts: list[str],
+        all_labels: np.ndarray,
+        top_n: int = 10,
+    ) -> list[str]:
+        """
+        Извлечь ключевые слова кластера через c-TF-IDF.
+
+        Объединяем шаблоны каждого кластера в один «документ»,
+        строим TF-IDF и берём топ-N слов целевого кластера.
+        """
+        # Собираем «документы» по кластерам
+        cluster_docs: dict[int, str] = defaultdict(str)
+        for text_val, label in zip(all_texts, all_labels):
+            cluster_docs[int(label)] += " " + text_val
+
+        if target_cluster_id not in cluster_docs:
+            return []
+
+        # Все документы кластеров (кроме noise=-1)
+        cluster_ids_sorted = sorted(
+            cid for cid in cluster_docs if cid != -1
+        )
+        if target_cluster_id not in cluster_ids_sorted:
+            return []
+
+        documents = [cluster_docs[cid] for cid in cluster_ids_sorted]
+        target_idx = cluster_ids_sorted.index(target_cluster_id)
+
+        if len(documents) < 1:
+            return []
+
+        try:
+            vectorizer = TfidfVectorizer(
+                max_features=1000,
+                stop_words="english",
+                token_pattern=r"(?u)\b[a-zA-Z_][a-zA-Z_]+\b",
+            )
+            tfidf_matrix = vectorizer.fit_transform(documents)
+            feature_names = vectorizer.get_feature_names_out()
+
+            scores = tfidf_matrix[target_idx].toarray().flatten()
+            top_indices = scores.argsort()[::-1][:top_n]
+
+            return [feature_names[i] for i in top_indices if scores[i] > 0]
+        except ValueError:
+            return []
+
+    async def _save_result(
+        self,
+        session: AsyncSession,
+        microservice: str,
+        period: str,
+        result: dict,
+    ) -> None:
+        """Сохранить результат кластеризации в PostgreSQL."""
+        record = ClusterResult(
+            microservice=microservice,
+            period=period,
+            num_clusters=result["num_clusters"],
+            noise_ratio=result["noise_ratio"],
+            silhouette_score=result.get("silhouette_score"),
+            result_data=result,
+        )
+        session.add(record)
