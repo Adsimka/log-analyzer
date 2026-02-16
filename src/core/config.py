@@ -52,13 +52,13 @@ class Settings(BaseSettings):
 
     # ── UMAP ────────────────────────────────────
     umap_n_components: int = 10
-    umap_n_neighbors: int = 10
-    umap_min_dist: float = 0.05
+    umap_n_neighbors: int = 30
+    umap_min_dist: float = 0.0
     umap_metric: str = "cosine"
 
     # ── HDBSCAN ─────────────────────────────────
-    hdbscan_min_cluster_size: int = 3
-    hdbscan_min_samples: int = 1
+    hdbscan_min_cluster_size: int = 2
+    hdbscan_min_samples: int = 2
     hdbscan_metric: str = "euclidean"
     hdbscan_cluster_selection_method: str = "eom"
 

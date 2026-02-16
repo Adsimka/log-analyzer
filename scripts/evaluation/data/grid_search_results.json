@@ -1,27 +1,27 @@
 {
-  "total_combinations": 1600,
-  "valid_results": 1541,
+  "total_combinations": 10176,
+  "valid_results": 8760,
   "best": {
     "params": {
       "skip_umap": false,
       "umap_n_components": 10,
-      "umap_n_neighbors": 10,
-      "umap_min_dist": 0.05,
-      "hdbscan_min_cluster_size": 3,
-      "hdbscan_min_samples": 1,
+      "umap_n_neighbors": 30,
+      "umap_min_dist": 0.0,
+      "hdbscan_min_cluster_size": 2,
+      "hdbscan_min_samples": 2,
       "hdbscan_metric": "euclidean",
       "hdbscan_method": "eom"
     },
     "metrics": {
-      "ari": 0.8324,
-      "nmi": 0.8391,
-      "v_measure": 0.8386,
-      "homogeneity": 0.8686,
-      "completeness": 0.8105,
-      "purity": 0.8987,
-      "n_clusters": 13,
-      "noise_ratio": 0.0204,
-      "noise_templates": 2
+      "ari": 0.8211,
+      "nmi": 0.8224,
+      "v_measure": 0.8222,
+      "homogeneity": 0.8387,
+      "completeness": 0.8063,
+      "purity": 0.8672,
+      "n_clusters": 11,
+      "noise_ratio": 0.0714,
+      "noise_templates": 7
     }
   },
   "top_15": [
@@ -29,135 +29,66 @@
       "params": {
         "skip_umap": false,
         "umap_n_components": 10,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.05,
-        "hdbscan_min_cluster_size": 3,
-        "hdbscan_min_samples": 1,
-        "hdbscan_metric": "euclidean",
-        "hdbscan_method": "eom"
-      },
-      "metrics": {
-        "ari": 0.8324,
-        "nmi": 0.8391,
-        "v_measure": 0.8386,
-        "homogeneity": 0.8686,
-        "completeness": 0.8105,
-        "purity": 0.8987,
-        "n_clusters": 13,
-        "noise_ratio": 0.0204,
-        "noise_templates": 2
-      }
-    },
-    {
-      "params": {
-        "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.1,
+        "umap_n_neighbors": 30,
+        "umap_min_dist": 0.0,
         "hdbscan_min_cluster_size": 2,
-        "hdbscan_min_samples": 3,
+        "hdbscan_min_samples": 2,
         "hdbscan_metric": "euclidean",
         "hdbscan_method": "eom"
       },
       "metrics": {
-        "ari": 0.8314,
-        "nmi": 0.8297,
-        "v_measure": 0.8295,
-        "homogeneity": 0.847,
-        "completeness": 0.8127,
-        "purity": 0.8735,
+        "ari": 0.8211,
+        "nmi": 0.8224,
+        "v_measure": 0.8222,
+        "homogeneity": 0.8387,
+        "completeness": 0.8063,
+        "purity": 0.8672,
         "n_clusters": 11,
-        "noise_ratio": 0.0612,
-        "noise_templates": 6
-      }
-    },
-    {
-      "params": {
-        "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.1,
-        "hdbscan_min_cluster_size": 3,
-        "hdbscan_min_samples": 3,
-        "hdbscan_metric": "euclidean",
-        "hdbscan_method": "eom"
-      },
-      "metrics": {
-        "ari": 0.8314,
-        "nmi": 0.8297,
-        "v_measure": 0.8295,
-        "homogeneity": 0.847,
-        "completeness": 0.8127,
-        "purity": 0.8735,
-        "n_clusters": 11,
-        "noise_ratio": 0.0612,
-        "noise_templates": 6
-      }
-    },
-    {
-      "params": {
-        "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.1,
-        "hdbscan_min_cluster_size": 3,
-        "hdbscan_min_samples": 3,
-        "hdbscan_metric": "euclidean",
-        "hdbscan_method": "leaf"
-      },
-      "metrics": {
-        "ari": 0.8314,
-        "nmi": 0.8297,
-        "v_measure": 0.8295,
-        "homogeneity": 0.847,
-        "completeness": 0.8127,
-        "purity": 0.8735,
-        "n_clusters": 11,
-        "noise_ratio": 0.0612,
-        "noise_templates": 6
+        "noise_ratio": 0.0714,
+        "noise_templates": 7
       }
     },
     {
       "params": {
         "skip_umap": false,
         "umap_n_components": 10,
-        "umap_n_neighbors": 10,
+        "umap_n_neighbors": 30,
         "umap_min_dist": 0.0,
         "hdbscan_min_cluster_size": 3,
-        "hdbscan_min_samples": 1,
+        "hdbscan_min_samples": 2,
         "hdbscan_metric": "euclidean",
         "hdbscan_method": "eom"
       },
       "metrics": {
-        "ari": 0.8281,
-        "nmi": 0.8401,
-        "v_measure": 0.8393,
-        "homogeneity": 0.8781,
-        "completeness": 0.8038,
-        "purity": 0.905,
-        "n_clusters": 14,
-        "noise_ratio": 0.0102,
-        "noise_templates": 1
+        "ari": 0.8211,
+        "nmi": 0.8224,
+        "v_measure": 0.8222,
+        "homogeneity": 0.8387,
+        "completeness": 0.8063,
+        "purity": 0.8672,
+        "n_clusters": 11,
+        "noise_ratio": 0.0714,
+        "noise_templates": 7
       }
     },
     {
       "params": {
         "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.0,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
+        "umap_min_dist": 0.1,
         "hdbscan_min_cluster_size": 2,
         "hdbscan_min_samples": 3,
         "hdbscan_metric": "euclidean",
         "hdbscan_method": "eom"
       },
       "metrics": {
-        "ari": 0.8278,
-        "nmi": 0.8281,
-        "v_measure": 0.8279,
-        "homogeneity": 0.8426,
-        "completeness": 0.8138,
-        "purity": 0.8768,
+        "ari": 0.8174,
+        "nmi": 0.8207,
+        "v_measure": 0.8205,
+        "homogeneity": 0.8391,
+        "completeness": 0.8026,
+        "purity": 0.8729,
         "n_clusters": 11,
         "noise_ratio": 0.0612,
         "noise_templates": 6
@@ -166,123 +97,123 @@
     {
       "params": {
         "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.0,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
+        "umap_min_dist": 0.1,
+        "hdbscan_min_cluster_size": 2,
+        "hdbscan_min_samples": 3,
+        "hdbscan_metric": "euclidean",
+        "hdbscan_method": "leaf"
+      },
+      "metrics": {
+        "ari": 0.8174,
+        "nmi": 0.8207,
+        "v_measure": 0.8205,
+        "homogeneity": 0.8391,
+        "completeness": 0.8026,
+        "purity": 0.8729,
+        "n_clusters": 11,
+        "noise_ratio": 0.0612,
+        "noise_templates": 6
+      }
+    },
+    {
+      "params": {
+        "skip_umap": false,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
+        "umap_min_dist": 0.1,
         "hdbscan_min_cluster_size": 3,
         "hdbscan_min_samples": 3,
         "hdbscan_metric": "euclidean",
         "hdbscan_method": "eom"
       },
       "metrics": {
-        "ari": 0.8271,
-        "nmi": 0.8311,
-        "v_measure": 0.831,
-        "homogeneity": 0.8402,
-        "completeness": 0.8221,
-        "purity": 0.8768,
-        "n_clusters": 10,
-        "noise_ratio": 0.0816,
-        "noise_templates": 8
+        "ari": 0.8174,
+        "nmi": 0.8207,
+        "v_measure": 0.8205,
+        "homogeneity": 0.8391,
+        "completeness": 0.8026,
+        "purity": 0.8729,
+        "n_clusters": 11,
+        "noise_ratio": 0.0612,
+        "noise_templates": 6
       }
     },
     {
       "params": {
         "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.0,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
+        "umap_min_dist": 0.1,
         "hdbscan_min_cluster_size": 3,
         "hdbscan_min_samples": 3,
         "hdbscan_metric": "euclidean",
         "hdbscan_method": "leaf"
       },
       "metrics": {
-        "ari": 0.8271,
-        "nmi": 0.8311,
-        "v_measure": 0.831,
-        "homogeneity": 0.8402,
-        "completeness": 0.8221,
-        "purity": 0.8768,
-        "n_clusters": 10,
-        "noise_ratio": 0.0816,
-        "noise_templates": 8
-      }
-    },
-    {
-      "params": {
-        "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.0,
-        "hdbscan_min_cluster_size": 5,
-        "hdbscan_min_samples": 3,
-        "hdbscan_metric": "euclidean",
-        "hdbscan_method": "leaf"
-      },
-      "metrics": {
-        "ari": 0.8271,
-        "nmi": 0.8311,
-        "v_measure": 0.831,
-        "homogeneity": 0.8402,
-        "completeness": 0.8221,
-        "purity": 0.8768,
-        "n_clusters": 10,
-        "noise_ratio": 0.0816,
-        "noise_templates": 8
-      }
-    },
-    {
-      "params": {
-        "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.1,
-        "hdbscan_min_cluster_size": 5,
-        "hdbscan_min_samples": 3,
-        "hdbscan_metric": "euclidean",
-        "hdbscan_method": "eom"
-      },
-      "metrics": {
-        "ari": 0.8244,
-        "nmi": 0.8308,
-        "v_measure": 0.8308,
-        "homogeneity": 0.8316,
-        "completeness": 0.8301,
-        "purity": 0.8716,
-        "n_clusters": 9,
-        "noise_ratio": 0.102,
-        "noise_templates": 10
-      }
-    },
-    {
-      "params": {
-        "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.1,
-        "hdbscan_min_cluster_size": 5,
-        "hdbscan_min_samples": 3,
-        "hdbscan_metric": "euclidean",
-        "hdbscan_method": "leaf"
-      },
-      "metrics": {
-        "ari": 0.8244,
-        "nmi": 0.8308,
-        "v_measure": 0.8308,
-        "homogeneity": 0.8316,
-        "completeness": 0.8301,
-        "purity": 0.8716,
-        "n_clusters": 9,
-        "noise_ratio": 0.102,
-        "noise_templates": 10
+        "ari": 0.8174,
+        "nmi": 0.8207,
+        "v_measure": 0.8205,
+        "homogeneity": 0.8391,
+        "completeness": 0.8026,
+        "purity": 0.8729,
+        "n_clusters": 11,
+        "noise_ratio": 0.0612,
+        "noise_templates": 6
       }
     },
     {
       "params": {
         "skip_umap": false,
         "umap_n_components": 5,
-        "umap_n_neighbors": 20,
+        "umap_n_neighbors": 15,
+        "umap_min_dist": 0.01,
+        "hdbscan_min_cluster_size": 2,
+        "hdbscan_min_samples": 2,
+        "hdbscan_metric": "euclidean",
+        "hdbscan_method": "eom"
+      },
+      "metrics": {
+        "ari": 0.8164,
+        "nmi": 0.8225,
+        "v_measure": 0.8222,
+        "homogeneity": 0.8442,
+        "completeness": 0.8014,
+        "purity": 0.8804,
+        "n_clusters": 12,
+        "noise_ratio": 0.0408,
+        "noise_templates": 4
+      }
+    },
+    {
+      "params": {
+        "skip_umap": false,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 10,
+        "umap_min_dist": 0.05,
+        "hdbscan_min_cluster_size": 5,
+        "hdbscan_min_samples": 2,
+        "hdbscan_metric": "euclidean",
+        "hdbscan_method": "leaf"
+      },
+      "metrics": {
+        "ari": 0.8134,
+        "nmi": 0.8214,
+        "v_measure": 0.8213,
+        "homogeneity": 0.8303,
+        "completeness": 0.8125,
+        "purity": 0.8617,
+        "n_clusters": 10,
+        "noise_ratio": 0.0714,
+        "noise_templates": 7
+      }
+    },
+    {
+      "params": {
+        "skip_umap": false,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
         "umap_min_dist": 0.05,
         "hdbscan_min_cluster_size": 5,
         "hdbscan_min_samples": 1,
@@ -290,22 +221,22 @@
         "hdbscan_method": "eom"
       },
       "metrics": {
-        "ari": 0.824,
-        "nmi": 0.822,
-        "v_measure": 0.822,
-        "homogeneity": 0.8265,
-        "completeness": 0.8175,
-        "purity": 0.8715,
+        "ari": 0.8132,
+        "nmi": 0.8256,
+        "v_measure": 0.8255,
+        "homogeneity": 0.8343,
+        "completeness": 0.8169,
+        "purity": 0.8601,
         "n_clusters": 10,
-        "noise_ratio": 0.0204,
-        "noise_templates": 2
+        "noise_ratio": 0.0408,
+        "noise_templates": 4
       }
     },
     {
       "params": {
         "skip_umap": false,
-        "umap_n_components": 5,
-        "umap_n_neighbors": 20,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
         "umap_min_dist": 0.05,
         "hdbscan_min_cluster_size": 5,
         "hdbscan_min_samples": 1,
@@ -313,61 +244,130 @@
         "hdbscan_method": "leaf"
       },
       "metrics": {
-        "ari": 0.824,
-        "nmi": 0.822,
-        "v_measure": 0.822,
-        "homogeneity": 0.8265,
-        "completeness": 0.8175,
-        "purity": 0.8715,
+        "ari": 0.8132,
+        "nmi": 0.8256,
+        "v_measure": 0.8255,
+        "homogeneity": 0.8343,
+        "completeness": 0.8169,
+        "purity": 0.8601,
         "n_clusters": 10,
-        "noise_ratio": 0.0204,
-        "noise_templates": 2
+        "noise_ratio": 0.0408,
+        "noise_templates": 4
       }
     },
     {
       "params": {
         "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.0,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
+        "umap_min_dist": 0.1,
         "hdbscan_min_cluster_size": 5,
-        "hdbscan_min_samples": 1,
-        "hdbscan_metric": "euclidean",
-        "hdbscan_method": "eom"
-      },
-      "metrics": {
-        "ari": 0.8214,
-        "nmi": 0.8279,
-        "v_measure": 0.8278,
-        "homogeneity": 0.8371,
-        "completeness": 0.8187,
-        "purity": 0.8696,
-        "n_clusters": 11,
-        "noise_ratio": 0.0,
-        "noise_templates": 0
-      }
-    },
-    {
-      "params": {
-        "skip_umap": false,
-        "umap_n_components": 15,
-        "umap_n_neighbors": 10,
-        "umap_min_dist": 0.0,
-        "hdbscan_min_cluster_size": 5,
-        "hdbscan_min_samples": 1,
+        "hdbscan_min_samples": 3,
         "hdbscan_metric": "euclidean",
         "hdbscan_method": "leaf"
       },
       "metrics": {
-        "ari": 0.8214,
-        "nmi": 0.8279,
-        "v_measure": 0.8278,
-        "homogeneity": 0.8371,
-        "completeness": 0.8187,
-        "purity": 0.8696,
+        "ari": 0.8125,
+        "nmi": 0.8208,
+        "v_measure": 0.8208,
+        "homogeneity": 0.8211,
+        "completeness": 0.8205,
+        "purity": 0.8729,
+        "n_clusters": 9,
+        "noise_ratio": 0.0918,
+        "noise_templates": 9
+      }
+    },
+    {
+      "params": {
+        "skip_umap": false,
+        "umap_n_components": 5,
+        "umap_n_neighbors": 15,
+        "umap_min_dist": 0.0,
+        "hdbscan_min_cluster_size": 2,
+        "hdbscan_min_samples": 2,
+        "hdbscan_metric": "euclidean",
+        "hdbscan_method": "eom"
+      },
+      "metrics": {
+        "ari": 0.8122,
+        "nmi": 0.8147,
+        "v_measure": 0.8146,
+        "homogeneity": 0.8308,
+        "completeness": 0.7989,
+        "purity": 0.8689,
         "n_clusters": 11,
-        "noise_ratio": 0.0,
-        "noise_templates": 0
+        "noise_ratio": 0.051,
+        "noise_templates": 5
+      }
+    },
+    {
+      "params": {
+        "skip_umap": false,
+        "umap_n_components": 5,
+        "umap_n_neighbors": 15,
+        "umap_min_dist": 0.0,
+        "hdbscan_min_cluster_size": 3,
+        "hdbscan_min_samples": 2,
+        "hdbscan_metric": "euclidean",
+        "hdbscan_method": "eom"
+      },
+      "metrics": {
+        "ari": 0.8122,
+        "nmi": 0.8147,
+        "v_measure": 0.8146,
+        "homogeneity": 0.8308,
+        "completeness": 0.7989,
+        "purity": 0.8689,
+        "n_clusters": 11,
+        "noise_ratio": 0.051,
+        "noise_templates": 5
+      }
+    },
+    {
+      "params": {
+        "skip_umap": false,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
+        "umap_min_dist": 0.2,
+        "hdbscan_min_cluster_size": 2,
+        "hdbscan_min_samples": 3,
+        "hdbscan_metric": "euclidean",
+        "hdbscan_method": "eom"
+      },
+      "metrics": {
+        "ari": 0.8121,
+        "nmi": 0.8174,
+        "v_measure": 0.8173,
+        "homogeneity": 0.8274,
+        "completeness": 0.8074,
+        "purity": 0.8647,
+        "n_clusters": 10,
+        "noise_ratio": 0.102,
+        "noise_templates": 10
+      }
+    },
+    {
+      "params": {
+        "skip_umap": false,
+        "umap_n_components": 8,
+        "umap_n_neighbors": 8,
+        "umap_min_dist": 0.2,
+        "hdbscan_min_cluster_size": 3,
+        "hdbscan_min_samples": 3,
+        "hdbscan_metric": "euclidean",
+        "hdbscan_method": "eom"
+      },
+      "metrics": {
+        "ari": 0.8121,
+        "nmi": 0.8174,
+        "v_measure": 0.8173,
+        "homogeneity": 0.8274,
+        "completeness": 0.8074,
+        "purity": 0.8647,
+        "n_clusters": 10,
+        "noise_ratio": 0.102,
+        "noise_templates": 10
       }
     }
   ]

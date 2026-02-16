@@ -336,11 +336,11 @@ def evaluate_params(
 
 # Пространство параметров для перебора
 PARAM_GRID = {
-    "umap_n_components": [5, 10, 15, 20],
-    "umap_n_neighbors": [10, 15, 20, 30],
-    "umap_min_dist": [0.0, 0.05, 0.1],
+    "umap_n_components": [5, 8, 10, 15, 20, 25],
+    "umap_n_neighbors": [5, 8, 10, 15, 20, 30, 50],
+    "umap_min_dist": [0.0, 0.01, 0.05, 0.1, 0.2],
     "umap_metric": ["cosine"],
-    "hdbscan_min_cluster_size": [2, 3, 5, 8],
+    "hdbscan_min_cluster_size": [2, 3, 5, 8, 10, 15],
     "hdbscan_min_samples": [1, 2, 3, 5],
     "hdbscan_metric": ["euclidean"],
     "hdbscan_method": ["eom", "leaf"],
@@ -348,7 +348,7 @@ PARAM_GRID = {
 
 # + вариант без UMAP (прямой HDBSCAN на SBERT-векторах)
 DIRECT_HDBSCAN_GRID = {
-    "hdbscan_min_cluster_size": [2, 3, 5, 8],
+    "hdbscan_min_cluster_size": [2, 3, 5, 8, 10, 15],
     "hdbscan_min_samples": [1, 2, 3, 5],
     "hdbscan_metric": ["euclidean", "cosine"],
     "hdbscan_method": ["eom", "leaf"],
