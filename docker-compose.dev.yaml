@@ -1,0 +1,8 @@
+# Development overrides: docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up
+services:
+  app:
+    command: >
+      uvicorn src.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload

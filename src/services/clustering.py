@@ -11,7 +11,7 @@
 
 import json
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import hdbscan
 import numpy as np
@@ -83,6 +83,7 @@ class ClusteringService:
         warn_counts: list[int] = []
         host_maps: list[dict[str, int]] = []
         stacktrace_patterns: list[str | None] = []
+        hourly_counts_list: list[list[int]] = []
 
         for row in template_data:
             if row["embedding"] is None:
@@ -98,6 +99,7 @@ class ClusteringService:
             warn_counts.append(row["warn_count"])
             host_maps.append(row["host_distribution"])
             stacktrace_patterns.append(row["stacktrace_pattern"])
+            hourly_counts_list.append(row.get("hourly_counts", []))
 
         if len(embeddings_list) < s.min_templates_for_clustering:
             return None
@@ -176,6 +178,7 @@ class ClusteringService:
                 warn_counts=warn_counts,
                 host_maps=host_maps,
                 stacktrace_patterns=stacktrace_patterns,
+                hourly_counts_list=hourly_counts_list,
                 total_logs=total_logs,
                 all_template_texts=template_texts,
                 all_labels=labels,
@@ -294,18 +297,52 @@ class ClusteringService:
         for row in host_result.mappings():
             host_dist[row["template_id"]][row["host"]] = row["cnt"]
 
+        # Запрос 3: почасовая статистика по шаблонам для time_trend
+        hourly_stmt = text("""
+            SELECT
+                l.template_id,
+                date_trunc('hour', l.timestamp) AS hour,
+                COUNT(*) AS cnt
+            FROM logs l
+            WHERE l.microservice = :microservice
+              AND l.timestamp > :cutoff
+              AND l.template_id IS NOT NULL
+            GROUP BY l.template_id, date_trunc('hour', l.timestamp)
+            ORDER BY l.template_id, hour
+        """)
+
+        hourly_result = await session.execute(
+            hourly_stmt, {"microservice": microservice, "cutoff": cutoff}
+        )
+
+        # Собираем {template_id: {hour: count}}
+        hourly_data: dict[int, dict[datetime, int]] = defaultdict(dict)
+        for row in hourly_result.mappings():
+            hourly_data[row["template_id"]][row["hour"]] = row["cnt"]
+
         # Объединяем
         result = []
         for row in main_rows:
+            tid = row["template_id"]
+
+            # Строим упорядоченный список почасовых счётчиков
+            hourly_map = hourly_data.get(tid, {})
+            if hourly_map:
+                hours_sorted = sorted(hourly_map.keys())
+                hourly_counts = [hourly_map[h] for h in hours_sorted]
+            else:
+                hourly_counts = []
+
             result.append({
-                "template_id": row["template_id"],
+                "template_id": tid,
                 "template_text": row["template_text"],
                 "embedding": row["embedding"],
                 "stacktrace_pattern": row["stacktrace_pattern"],
                 "log_count": row["log_count"],
                 "error_count": row["error_count"],
                 "warn_count": row["warn_count"],
-                "host_distribution": host_dist.get(row["template_id"], {}),
+                "host_distribution": host_dist.get(tid, {}),
+                "hourly_counts": hourly_counts,
             })
 
         return result
@@ -320,6 +357,7 @@ class ClusteringService:
         warn_counts: list[int],
         host_maps: list[dict],
         stacktrace_patterns: list[str | None],
+        hourly_counts_list: list[list[int]],
         total_logs: int,
         all_template_texts: list[str],
         all_labels: np.ndarray,
@@ -365,6 +403,18 @@ class ClusteringService:
             cluster_id, all_template_texts, all_labels
         )
 
+        # Time trend: агрегируем hourly_counts по шаблонам кластера
+        merged_hourly: Counter = Counter()
+        for i in indices:
+            for hour_idx, cnt in enumerate(hourly_counts_list[i]):
+                merged_hourly[hour_idx] += cnt
+        if merged_hourly:
+            max_hour = max(merged_hourly.keys())
+            aggregated_hourly = [merged_hourly.get(h, 0) for h in range(max_hour + 1)]
+        else:
+            aggregated_hourly = []
+        time_trend = self._compute_time_trend(aggregated_hourly)
+
         return {
             "cluster_id": cluster_id,
             "size": cluster_logs,
@@ -373,7 +423,7 @@ class ClusteringService:
             "top_templates": templates_with_counts[:5],
             "level_distribution": level_dist,
             "host_distribution": dict(merged_hosts.most_common(10)),
-            "time_trend": "stable",
+            "time_trend": time_trend,
         }
 
     def _build_unclustered_info(
@@ -404,6 +454,43 @@ class ClusteringService:
                 :10
             ],
         }
+
+    @staticmethod
+    def _compute_time_trend(
+        hourly_counts: list[int],
+    ) -> str:
+        """
+        Определить тренд по почасовым счётчикам логов.
+
+        Делит период на две половины и сравнивает средние.
+        Returns: 'increasing', 'decreasing', 'stable', или 'spike'.
+        """
+        if not hourly_counts or len(hourly_counts) < 2:
+            return "stable"
+
+        mid = len(hourly_counts) // 2
+        first_half = hourly_counts[:mid] or [0]
+        second_half = hourly_counts[mid:] or [0]
+
+        avg_first = sum(first_half) / len(first_half)
+        avg_second = sum(second_half) / len(second_half)
+
+        # Проверяем на spike: последний час резко выше среднего
+        total_avg = sum(hourly_counts) / len(hourly_counts)
+        if total_avg > 0 and hourly_counts[-1] > total_avg * 3:
+            return "spike"
+
+        if avg_first == 0 and avg_second == 0:
+            return "stable"
+
+        base = max(avg_first, avg_second, 1)
+        ratio = (avg_second - avg_first) / base
+
+        if ratio > 0.25:
+            return "increasing"
+        elif ratio < -0.25:
+            return "decreasing"
+        return "stable"
 
     @staticmethod
     def _extract_keywords(
@@ -472,3 +559,4 @@ class ClusteringService:
             result_data=result,
         )
         session.add(record)
+        await session.flush()
