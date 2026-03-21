@@ -80,7 +80,6 @@ class ClusteringService:
         embeddings_list: list[np.ndarray] = []
         log_counts: list[int] = []
         error_counts: list[int] = []
-        warn_counts: list[int] = []
         host_maps: list[dict[str, int]] = []
         stacktrace_patterns: list[str | None] = []
         hourly_counts_list: list[list[int]] = []
@@ -96,7 +95,6 @@ class ClusteringService:
             )
             log_counts.append(row["log_count"])
             error_counts.append(row["error_count"])
-            warn_counts.append(row["warn_count"])
             host_maps.append(row["host_distribution"])
             stacktrace_patterns.append(row["stacktrace_pattern"])
             hourly_counts_list.append(row.get("hourly_counts", []))
@@ -175,7 +173,6 @@ class ClusteringService:
                 template_texts=template_texts,
                 log_counts=log_counts,
                 error_counts=error_counts,
-                warn_counts=warn_counts,
                 host_maps=host_maps,
                 stacktrace_patterns=stacktrace_patterns,
                 hourly_counts_list=hourly_counts_list,
@@ -258,8 +255,7 @@ class ClusteringService:
                 t.embedding,
                 t.stacktrace_pattern,
                 COUNT(l.id) AS log_count,
-                SUM(CASE WHEN l.level = 'ERROR' THEN 1 ELSE 0 END) AS error_count,
-                SUM(CASE WHEN l.level = 'WARN' THEN 1 ELSE 0 END) AS warn_count
+                COUNT(l.id) AS error_count
             FROM templates t
             JOIN logs l ON l.template_id = t.id
             WHERE l.microservice = :microservice
@@ -340,7 +336,6 @@ class ClusteringService:
                 "stacktrace_pattern": row["stacktrace_pattern"],
                 "log_count": row["log_count"],
                 "error_count": row["error_count"],
-                "warn_count": row["warn_count"],
                 "host_distribution": host_dist.get(tid, {}),
                 "hourly_counts": hourly_counts,
             })
@@ -354,7 +349,6 @@ class ClusteringService:
         template_texts: list[str],
         log_counts: list[int],
         error_counts: list[int],
-        warn_counts: list[int],
         host_maps: list[dict],
         stacktrace_patterns: list[str | None],
         hourly_counts_list: list[list[int]],
@@ -380,16 +374,9 @@ class ClusteringService:
             reverse=True,
         )
 
-        # Level distribution
+        # Level distribution — система работает только с ERROR
         total_errors = sum(error_counts[i] for i in indices)
-        total_warns = sum(warn_counts[i] for i in indices)
-        level_total = total_errors + total_warns
-        level_dist = {}
-        if level_total > 0:
-            if total_errors > 0:
-                level_dist["ERROR"] = round(total_errors / level_total, 3)
-            if total_warns > 0:
-                level_dist["WARN"] = round(total_warns / level_total, 3)
+        level_dist = {"ERROR": 1.0} if total_errors > 0 else {}
 
         # Host distribution
         merged_hosts: Counter = Counter()

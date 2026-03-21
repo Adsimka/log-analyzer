@@ -115,7 +115,7 @@ def parse_loghub_csv(filepath: Path, count: int, errors_only: bool, save_gt: boo
                 else:
                     level = "ERROR"  # По умолчанию
 
-            if errors_only and level not in ("ERROR", "FATAL"):
+            if errors_only and level != "ERROR":
                 continue
 
             # Timestamp
@@ -173,7 +173,7 @@ def parse_text_logs(filepath: Path, count: int, errors_only: bool):
                 message = line
                 host = "unknown"
 
-            if errors_only and level not in ("ERROR",):
+            if errors_only and level != "ERROR":
                 continue
 
             logs.append({
@@ -221,7 +221,7 @@ def parse_thunderbird(filepath: Path, count: int, errors_only: bool):
                     ts = None
                     host = "unknown"
 
-            if errors_only and level not in ("ERROR",):
+            if errors_only and level != "ERROR":
                 continue
 
             if ts is None:
@@ -284,11 +284,13 @@ def _parse_timestamp(raw: str) -> datetime | None:
 
 
 def _normalize_level(raw: str) -> str:
-    """Нормализовать level в ERROR или WARN."""
+    """Нормализовать level. Система принимает только ERROR."""
     raw = (raw or "").upper().strip()
     if raw in ("ERROR", "FATAL", "CRITICAL", "SEVERE", "ERR", "EMERG", "ALERT"):
         return "ERROR"
-    return "WARN"
+    if raw in ("WARN", "WARNING"):
+        return "WARN"
+    return "INFO"
 
 
 def _guess_level(line: str) -> str:
@@ -296,7 +298,9 @@ def _guess_level(line: str) -> str:
     upper = line.upper()
     if any(kw in upper for kw in ("ERROR", "FATAL", "CRITICAL", "EXCEPTION", "FAIL")):
         return "ERROR"
-    return "WARN"
+    if any(kw in upper for kw in ("WARN", "WARNING")):
+        return "WARN"
+    return "INFO"
 
 
 def send_to_api(logs: list[dict], url: str, batch_size: int):
@@ -366,9 +370,9 @@ def main():
         help="Размер батча для отправки (default: 1000)",
     )
     parser.add_argument(
-        "--errors-only",
+        "--all-levels",
         action="store_true",
-        help="Загружать только ошибки (ERROR/FATAL)",
+        help="Загружать все уровни (по умолчанию — только ERROR)",
     )
     parser.add_argument(
         "--save-ground-truth",
@@ -420,12 +424,12 @@ def main():
     ground_truth = {}
     if fmt == "loghub":
         logs, ground_truth = parse_loghub_csv(
-            filepath, args.count, args.errors_only, args.save_ground_truth
+            filepath, args.count, not args.all_levels, args.save_ground_truth
         )
     elif fmt == "thunderbird":
-        logs, ground_truth = parse_thunderbird(filepath, args.count, args.errors_only)
+        logs, ground_truth = parse_thunderbird(filepath, args.count, not args.all_levels)
     else:
-        logs, ground_truth = parse_text_logs(filepath, args.count, args.errors_only)
+        logs, ground_truth = parse_text_logs(filepath, args.count, not args.all_levels)
 
     # Устанавливаем microservice
     for log in logs:

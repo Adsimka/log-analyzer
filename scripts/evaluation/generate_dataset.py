@@ -362,8 +362,7 @@ def generate_dataset(
             template = random.choice(cluster_def["templates"])
             message = _fill_template(template)
 
-            # 80% ERROR, 20% WARN
-            level = "ERROR" if random.random() < 0.8 else "WARN"
+            level = "ERROR"
             offset = timedelta(seconds=random.randint(0, 3600))
             timestamp = now - offset
             host = random.choice(hosts)
@@ -407,7 +406,7 @@ def generate_dataset(
     for _ in range(noise_count):
         template = random.choice(noise_templates)
         message = _fill_template(template)
-        level = "ERROR" if random.random() < 0.8 else "WARN"
+        level = "ERROR"
         offset = timedelta(seconds=random.randint(0, 3600))
         timestamp = now - offset
 

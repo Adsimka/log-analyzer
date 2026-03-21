@@ -134,8 +134,7 @@ def generate_logs(count: int, services: list[str] | None = None) -> list[dict]:
         template = random.choice(config["templates"])
         message = _fill_template(template)
 
-        # 85% ERROR, 15% WARN
-        level = "ERROR" if random.random() < 0.85 else "WARN"
+        level = "ERROR"
 
         # Время в пределах последнего часа
         offset = timedelta(seconds=random.randint(0, 3600))

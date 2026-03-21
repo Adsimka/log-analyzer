@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # ── Application ─────────────────────────────
     log_level: str = "INFO"
-    accepted_log_levels: str = "ERROR,WARN"
+    accepted_log_levels: str = "ERROR"
     clustering_interval_seconds: int = 300
     default_period: str = "24h"
     available_periods: list[str] = Field(

@@ -18,7 +18,7 @@ class LogEntry(BaseModel):
     """Одна запись лога, приходящая от внешнего сервиса."""
 
     timestamp: datetime
-    level: str = Field(..., examples=["ERROR", "WARN"])
+    level: str = Field(..., examples=["ERROR"])
     message: str = Field(..., min_length=1, max_length=10_000)
     microservice: str = Field(..., min_length=1, max_length=128)
     host: str = Field(default="unknown", max_length=128)
