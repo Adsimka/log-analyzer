@@ -86,14 +86,14 @@ class EmbeddingService:
         data = self._redis.get(key)
         if data is None:
             return None
-        return self._deserialize_embedding(data)
+        return self.deserialize_embedding(data)
 
     def cache_embedding(
         self, microservice: str, drain_cluster_id: int, embedding: np.ndarray
     ) -> None:
         """Сохранить эмбеддинг в Redis-кэш."""
         key = f"template:embedding:{microservice}:{drain_cluster_id}"
-        self._redis.set(key, self._serialize_embedding(embedding))
+        self._redis.set(key, self.serialize_embedding(embedding))
 
     def encode_and_cache(
         self,
@@ -132,27 +132,14 @@ class EmbeddingService:
         return result
 
     @staticmethod
-    def _serialize_embedding(embedding: np.ndarray) -> bytes:
-        """Сериализовать numpy-массив в bytes для хранения."""
-        buffer = io.BytesIO()
-        np.save(buffer, embedding)
-        return buffer.getvalue()
-
-    @staticmethod
-    def _deserialize_embedding(data: bytes) -> np.ndarray:
-        """Десериализовать bytes обратно в numpy-массив."""
-        buffer = io.BytesIO(data)
-        return np.load(buffer)
-
-    @staticmethod
     def serialize_embedding(embedding: np.ndarray) -> bytes:
-        """Публичный метод сериализации (для записи в PostgreSQL)."""
+        """Сериализовать numpy-массив в bytes для хранения в Redis/PostgreSQL."""
         buffer = io.BytesIO()
         np.save(buffer, embedding)
         return buffer.getvalue()
 
     @staticmethod
     def deserialize_embedding(data: bytes) -> np.ndarray:
-        """Публичный метод десериализации (для чтения из PostgreSQL)."""
+        """Десериализовать bytes обратно в numpy-массив."""
         buffer = io.BytesIO(data)
         return np.load(buffer)

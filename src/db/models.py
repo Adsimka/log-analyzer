@@ -13,6 +13,7 @@ from sqlalchemy import (
     BigInteger,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     LargeBinary,
@@ -47,7 +48,9 @@ class LogRecord(Base):
     raw_message: Mapped[str] = mapped_column(Text, nullable=False)
     host: Mapped[str] = mapped_column(String(128), nullable=False, default="unknown")
     stacktrace: Mapped[str | None] = mapped_column(Text, nullable=True)
-    template_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    template_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("templates.id", ondelete="SET NULL"), nullable=True
+    )
 
     __table_args__ = (
         Index("ix_logs_service_timestamp", "microservice", "timestamp"),

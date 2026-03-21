@@ -7,7 +7,7 @@
 
 from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -190,42 +190,49 @@ class IngestionService:
         # Колонки уникального индекса для ON CONFLICT
         conflict_columns = [Template.microservice, Template.drain_cluster_id]
 
+        # Batch upsert: собираем все значения и выполняем одним запросом
+        values_list = []
         for drain_id in all_drain_ids:
             count = template_counts[drain_id]
-
             if drain_id in new_templates:
-                text, st_pattern = new_templates[drain_id]
+                text_val, st_pattern = new_templates[drain_id]
                 embedding_bytes = new_embeddings.get(drain_id)
-
-                stmt = pg_insert(Template).values(
-                    microservice=microservice,
-                    drain_cluster_id=drain_id,
-                    template_text=text,
-                    embedding=embedding_bytes,
-                    stacktrace_pattern=st_pattern,
-                    log_count=count,
-                )
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=conflict_columns,
-                    set_={
-                        "template_text": stmt.excluded.template_text,
-                        "embedding": stmt.excluded.embedding,
-                        "stacktrace_pattern": stmt.excluded.stacktrace_pattern,
-                        "log_count": Template.log_count + count,
-                    },
-                )
+                values_list.append({
+                    "microservice": microservice,
+                    "drain_cluster_id": drain_id,
+                    "template_text": text_val,
+                    "embedding": embedding_bytes,
+                    "stacktrace_pattern": st_pattern,
+                    "log_count": count,
+                })
             else:
-                stmt = pg_insert(Template).values(
-                    microservice=microservice,
-                    drain_cluster_id=drain_id,
-                    template_text="",
-                    log_count=count,
-                )
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=conflict_columns,
-                    set_={"log_count": Template.log_count + count},
-                )
+                values_list.append({
+                    "microservice": microservice,
+                    "drain_cluster_id": drain_id,
+                    "template_text": "",
+                    "embedding": None,
+                    "stacktrace_pattern": None,
+                    "log_count": count,
+                })
 
+        if values_list:
+            stmt = pg_insert(Template).values(values_list)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=conflict_columns,
+                set_={
+                    "template_text": func.CASE(
+                        (stmt.excluded.template_text != "", stmt.excluded.template_text),
+                        else_=Template.template_text,
+                    ),
+                    "embedding": func.COALESCE(
+                        stmt.excluded.embedding, Template.embedding
+                    ),
+                    "stacktrace_pattern": func.COALESCE(
+                        stmt.excluded.stacktrace_pattern, Template.stacktrace_pattern
+                    ),
+                    "log_count": Template.log_count + stmt.excluded.log_count,
+                },
+            )
             await session.execute(stmt)
 
         await session.flush()
