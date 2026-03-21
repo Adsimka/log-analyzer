@@ -2,37 +2,54 @@
 """
 Загрузчик реальных лог-датасетов с Kaggle для тестирования системы кластеризации.
 
-Поддерживаемые датасеты:
-1. Loghub (логи от HDFS, OpenStack, Hadoop, Spark, Zookeeper и др.)
-   - CSV-файлы с колонками: Content, EventId, EventTemplate
-   - https://www.kaggle.com/datasets/mczielinski/loghub
+Поддерживаемые датасеты (проверенные, доступные на Kaggle):
 
-2. Thunderbird / BGL (суперкомпьютерные логи)
-   - Структурированные лог-записи с severity level
+1. LogHub BGL (BlueGene/L supercomputer, labeled)
+   - https://www.kaggle.com/datasets/omduggineni/loghub-bgl-log-data
+   - kaggle datasets download -d omduggineni/loghub-bgl-log-data
 
-3. Произвольные текстовые лог-файлы
+2. LogHub HDFS (Hadoop Distributed File System)
+   - https://www.kaggle.com/datasets/omduggineni/loghub-hadoop-distributed-file-system-log-data
+   - kaggle datasets download -d omduggineni/loghub-hadoop-distributed-file-system-log-data
+
+3. LogHub Thunderbird (supercomputer, labeled)
+   - https://www.kaggle.com/datasets/omduggineni/loghub-mozilla-thunderbird-log-data
+   - kaggle datasets download -d omduggineni/loghub-mozilla-thunderbird-log-data
+
+4. Structured BGL Logs CSV (готовый CSV)
+   - https://www.kaggle.com/datasets/ayush2222/structured-bgl-logs-csv
+   - kaggle datasets download -d ayush2222/structured-bgl-logs-csv
+
+5. Server Logs (Apache-формат)
+   - https://www.kaggle.com/datasets/vishnu0399/server-logs
+   - kaggle datasets download -d vishnu0399/server-logs
+
+6. Произвольные текстовые лог-файлы
    - Каждая строка — одно лог-сообщение
 
+Также доступны напрямую с Zenodo (без Kaggle-аккаунта):
+   wget https://zenodo.org/record/3227177/files/BGL.tar.gz
+   wget https://zenodo.org/record/3227177/files/HDFS_1.tar.gz
+
 Использование:
-    # Из CSV (Loghub формат)
-    python scripts/load_kaggle_logs.py --input data/HDFS.log_structured.csv \\
-        --format loghub --service hdfs-service --count 5000
+    # 1. Скачать датасет
+    kaggle datasets download -d omduggineni/loghub-bgl-log-data -p data/ --unzip
 
-    # Из текстового файла
-    python scripts/load_kaggle_logs.py --input data/application.log \\
-        --format text --service my-service --count 10000
+    # 2. Загрузить в систему (по умолчанию — только ERROR)
+    python scripts/load_kaggle_logs.py --input data/BGL.log_structured.csv \\
+        --format loghub --service bgl-supercomputer --count 5000
 
-    # Из Thunderbird/BGL формата
-    python scripts/load_kaggle_logs.py --input data/Thunderbird.log \\
-        --format thunderbird --service thunderbird --count 5000
+    # 3. Или из текстового файла
+    python scripts/load_kaggle_logs.py --input data/BGL.log \\
+        --format thunderbird --service bgl --count 10000
 
-    # С фильтрацией только ошибок
-    python scripts/load_kaggle_logs.py --input data/HDFS.log_structured.csv \\
-        --format loghub --service hdfs --errors-only
+    # 4. Dry-run для проверки парсинга
+    python scripts/load_kaggle_logs.py --input data/BGL.log_structured.csv \\
+        --format loghub --service bgl --dry-run
 
-    # Сохранить GT для оценки (если есть EventId/EventTemplate в CSV)
-    python scripts/load_kaggle_logs.py --input data/HDFS.log_structured.csv \\
-        --format loghub --service hdfs --save-ground-truth
+    # 5. Сохранить GT для оценки (если есть EventId/EventTemplate в CSV)
+    python scripts/load_kaggle_logs.py --input data/BGL.log_structured.csv \\
+        --format loghub --service bgl --save-ground-truth
 """
 
 import argparse
