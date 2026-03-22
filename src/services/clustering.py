@@ -135,6 +135,7 @@ class ClusteringService:
         # ──────────────────────────────────
         # Шаг 2: UMAP (опционально)
         # ──────────────────────────────────
+        umap_applied = False
         if len(embeddings) > s.skip_umap_threshold:
             reducer = UMAP(
                 n_components=min(s.umap_n_components, len(embeddings) - 2),
@@ -144,16 +145,20 @@ class ClusteringService:
                 random_state=42,
             )
             reduced = reducer.fit_transform(embeddings)
+            umap_applied = True
         else:
             reduced = embeddings
 
         # ──────────────────────────────────
         # Шаг 3: HDBSCAN
         # ──────────────────────────────────
+        # После UMAP евклидова метрика оптимальна (низкоразмерное пространство).
+        # Без UMAP используем cosine — SBERT-эмбеддинги оптимизированы под неё.
+        effective_metric = s.hdbscan_metric if umap_applied else "cosine"
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=s.hdbscan_min_cluster_size,
             min_samples=s.hdbscan_min_samples,
-            metric=s.hdbscan_metric,
+            metric=effective_metric,
             cluster_selection_method=s.hdbscan_cluster_selection_method,
         )
         labels = clusterer.fit_predict(reduced)
@@ -172,7 +177,11 @@ class ClusteringService:
             if np.sum(non_noise_mask) > num_clusters:
                 try:
                     score = float(
-                        silhouette_score(reduced[non_noise_mask], labels[non_noise_mask])
+                        silhouette_score(
+                            reduced[non_noise_mask],
+                            labels[non_noise_mask],
+                            metric=effective_metric,
+                        )
                     )
                 except ValueError:
                     score = None

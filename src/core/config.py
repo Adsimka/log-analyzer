@@ -57,14 +57,14 @@ class Settings(BaseSettings):
     umap_metric: str = "cosine"
 
     # ── HDBSCAN ─────────────────────────────────
-    hdbscan_min_cluster_size: int = 2
+    hdbscan_min_cluster_size: int = 3
     hdbscan_min_samples: int = 2
     hdbscan_metric: str = "euclidean"
     hdbscan_cluster_selection_method: str = "eom"
 
     # ── Пороги кластеризации ────────────────────
     min_templates_for_clustering: int = 5
-    skip_umap_threshold: int = 50
+    skip_umap_threshold: int = 15
 
     # ── Вычисляемые свойства ────────────────────
 
