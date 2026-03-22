@@ -635,7 +635,7 @@ def main():
     print(f"\nГотово! Отправлено: {total} логов")
     print(
         f"Дождитесь кластеризации (~5 минут) и проверьте результаты:\n"
-        f"  curl {args.url}/api/v1/results/{args.service}?period=24h | python -m json.tool"
+        f'  curl "{args.url}/api/v1/results/{args.service}?period=24h" | python -m json.tool'
     )
 
 

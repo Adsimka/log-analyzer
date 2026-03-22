@@ -7,7 +7,7 @@
 
 from collections import defaultdict
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -220,7 +220,7 @@ class IngestionService:
             stmt = stmt.on_conflict_do_update(
                 index_elements=conflict_columns,
                 set_={
-                    "template_text": func.CASE(
+                    "template_text": case(
                         (stmt.excluded.template_text != "", stmt.excluded.template_text),
                         else_=Template.template_text,
                     ),

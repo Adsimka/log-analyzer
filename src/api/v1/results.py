@@ -86,7 +86,7 @@ async def list_services(
 )
 async def get_results(
     microservice: str,
-    period: str = Query(default="24h", regex=r"^\d+(h|d)$"),
+    period: str = Query(default="24h", pattern=r"^\d+(h|d)$"),
     fresh: bool = Query(default=False),
     redis_client=Depends(get_redis_client),
     session: AsyncSession = Depends(get_db_session),
@@ -143,7 +143,7 @@ async def get_results(
 async def get_cluster_detail(
     microservice: str,
     cluster_id: int,
-    period: str = Query(default="24h", regex=r"^\d+(h|d)$"),
+    period: str = Query(default="24h", pattern=r"^\d+(h|d)$"),
     redis_client=Depends(get_redis_client),
     session: AsyncSession = Depends(get_db_session),
 ):
