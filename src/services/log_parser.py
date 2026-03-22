@@ -78,7 +78,7 @@ class LogParserService:
     def _create_miner(self, microservice: str) -> TemplateMiner:
         """Создать новый Drain3 TemplateMiner для микросервиса."""
         config = TemplateMinerConfig()
-        config.drain_sim_th = 0.4
+        config.drain_sim_th = 0.3
         config.drain_depth = 4
         config.drain_max_children = 100
         config.drain_max_clusters = 1024

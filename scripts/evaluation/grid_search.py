@@ -145,7 +145,7 @@ def parse_with_drain3(messages: list[str]) -> tuple[list[int], dict[int, str]]:
     from drain3.template_miner_config import TemplateMinerConfig
 
     config = TemplateMinerConfig()
-    config.drain_sim_th = 0.4
+    config.drain_sim_th = 0.3
     config.drain_depth = 4
     config.drain_max_children = 100
     config.drain_max_clusters = 1024
@@ -179,6 +179,23 @@ def parse_with_drain3(messages: list[str]) -> tuple[list[int], dict[int, str]]:
 #  SBERT ЭМБЕДДИНГИ
 # ═══════════════════════════════════════════════════════
 
+def _preprocess_template(text: str) -> str:
+    """Заменить Drain3-плейсхолдеры на осмысленные слова для SBERT."""
+    replacements = [
+        ("<IP>", "ADDRESS"),
+        ("<UUID>", "IDENTIFIER"),
+        ("<HEX>", "HEXVALUE"),
+        ("<PORT>", "PORT"),
+        ("<PATH>", "FILEPATH"),
+        ("<NUM>", "NUMBER"),
+        ("<*>", "PARAM"),
+    ]
+    for placeholder, replacement in replacements:
+        text = text.replace(placeholder, replacement)
+    text = re.sub(r"(\bPARAM\b(?:\s+\bPARAM\b)+)", "PARAM", text)
+    return " ".join(text.split())
+
+
 def compute_embeddings(
     templates: dict[int, str],
     model_name: str = "all-MiniLM-L6-v2",
@@ -190,9 +207,9 @@ def compute_embeddings(
     model = SentenceTransformer(model_name)
 
     ids = list(templates.keys())
-    texts = [templates[i] for i in ids]
+    texts = [_preprocess_template(templates[i]) for i in ids]
 
-    print(f"  Кодирование {len(texts)} шаблонов...")
+    print(f"  Кодирование {len(texts)} шаблонов (с preprocessing)...")
     vectors = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
 
     return {cid: vec for cid, vec in zip(ids, vectors)}
@@ -225,23 +242,33 @@ def cluster_templates(
     from umap import UMAP
 
     data = embeddings
+    n = len(data)
 
     # UMAP
-    if not params.skip_umap and len(data) > params.umap_n_components + 2:
+    if not params.skip_umap and n > params.umap_n_components + 2:
+        adaptive_nn = min(
+            params.umap_n_neighbors,
+            max(5, int(np.sqrt(n))),
+            n - 1,
+        )
         reducer = UMAP(
-            n_components=min(params.umap_n_components, len(data) - 2),
-            n_neighbors=min(params.umap_n_neighbors, len(data) - 1),
+            n_components=min(params.umap_n_components, n - 2),
+            n_neighbors=adaptive_nn,
             min_dist=params.umap_min_dist,
             metric=params.umap_metric,
             random_state=42,
         )
         data = reducer.fit_transform(data)
 
-    # HDBSCAN
+    # HDBSCAN — cosine для высокоразмерных, euclidean после UMAP
+    effective_metric = params.hdbscan_metric
+    if params.skip_umap and effective_metric == "euclidean":
+        effective_metric = "cosine"
+
     clusterer = hdbscan_lib.HDBSCAN(
         min_cluster_size=params.hdbscan_min_cluster_size,
         min_samples=params.hdbscan_min_samples,
-        metric=params.hdbscan_metric,
+        metric=effective_metric,
         cluster_selection_method=params.hdbscan_method,
     )
     labels = clusterer.fit_predict(data)
@@ -336,21 +363,21 @@ def evaluate_params(
 
 # Пространство параметров для перебора
 PARAM_GRID = {
-    "umap_n_components": [5, 8, 10, 15, 20, 25],
-    "umap_n_neighbors": [5, 8, 10, 15, 20, 30, 50],
-    "umap_min_dist": [0.0, 0.01, 0.05, 0.1, 0.2],
+    "umap_n_components": [5, 8, 10, 15],
+    "umap_n_neighbors": [5, 8, 10, 15],
+    "umap_min_dist": [0.0, 0.01, 0.05, 0.1],
     "umap_metric": ["cosine"],
-    "hdbscan_min_cluster_size": [2, 3, 5, 8, 10, 15],
-    "hdbscan_min_samples": [1, 2, 3, 5],
+    "hdbscan_min_cluster_size": [2, 3, 5, 8],
+    "hdbscan_min_samples": [1, 2, 3],
     "hdbscan_metric": ["euclidean"],
     "hdbscan_method": ["eom", "leaf"],
 }
 
 # + вариант без UMAP (прямой HDBSCAN на SBERT-векторах)
 DIRECT_HDBSCAN_GRID = {
-    "hdbscan_min_cluster_size": [2, 3, 5, 8, 10, 15],
-    "hdbscan_min_samples": [1, 2, 3, 5],
-    "hdbscan_metric": ["euclidean", "cosine"],
+    "hdbscan_min_cluster_size": [2, 3, 5, 8],
+    "hdbscan_min_samples": [1, 2, 3],
+    "hdbscan_metric": ["cosine"],
     "hdbscan_method": ["eom", "leaf"],
 }
 

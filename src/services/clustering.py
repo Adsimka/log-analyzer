@@ -136,10 +136,18 @@ class ClusteringService:
         # Шаг 2: UMAP (опционально)
         # ──────────────────────────────────
         umap_applied = False
-        if len(embeddings) > s.skip_umap_threshold:
+        n_templates = len(embeddings)
+        if n_templates > s.skip_umap_threshold:
+            # n_neighbors масштабируется с размером датасета:
+            # слишком большое значение сглаживает локальную структуру.
+            adaptive_n_neighbors = min(
+                s.umap_n_neighbors,
+                max(5, int(np.sqrt(n_templates))),
+                n_templates - 1,
+            )
             reducer = UMAP(
-                n_components=min(s.umap_n_components, len(embeddings) - 2),
-                n_neighbors=min(s.umap_n_neighbors, len(embeddings) - 1),
+                n_components=min(s.umap_n_components, n_templates - 2),
+                n_neighbors=adaptive_n_neighbors,
                 min_dist=s.umap_min_dist,
                 metric=s.umap_metric,
                 random_state=42,
@@ -155,12 +163,17 @@ class ClusteringService:
         # После UMAP евклидова метрика оптимальна (низкоразмерное пространство).
         # Без UMAP используем cosine — SBERT-эмбеддинги оптимизированы под неё.
         effective_metric = s.hdbscan_metric if umap_applied else "cosine"
-        clusterer = hdbscan.HDBSCAN(
+        hdbscan_kwargs = dict(
             min_cluster_size=s.hdbscan_min_cluster_size,
             min_samples=s.hdbscan_min_samples,
             metric=effective_metric,
             cluster_selection_method=s.hdbscan_cluster_selection_method,
         )
+        if s.hdbscan_cluster_selection_epsilon > 0:
+            hdbscan_kwargs["cluster_selection_epsilon"] = (
+                s.hdbscan_cluster_selection_epsilon
+            )
+        clusterer = hdbscan.HDBSCAN(**hdbscan_kwargs)
         labels = clusterer.fit_predict(reduced)
 
         # ──────────────────────────────────
@@ -170,6 +183,16 @@ class ClusteringService:
         num_clusters = len(unique_labels - {-1})
         noise_count = int(np.sum(labels == -1))
         noise_ratio = noise_count / len(labels) if len(labels) > 0 else 0.0
+
+        # DBCV — первичная метрика для density-based кластеризации.
+        # Silhouette — вторичная (для сравнимости с бенчмарками).
+        dbcv_score = None
+        try:
+            validity = getattr(clusterer, "relative_validity_", None)
+            if validity is not None and np.isfinite(validity):
+                dbcv_score = float(validity)
+        except Exception:
+            pass
 
         score = None
         if num_clusters >= 2 and noise_count < len(labels):
@@ -235,6 +258,7 @@ class ClusteringService:
             "num_clusters": num_clusters,
             "noise_ratio": round(noise_ratio, 4),
             "silhouette_score": round(score, 4) if score is not None else None,
+            "dbcv_score": round(dbcv_score, 4) if dbcv_score is not None else None,
             "clusters": clusters_detail,
             "unclustered": unclustered,
         }
@@ -255,6 +279,7 @@ class ClusteringService:
             num_clusters=num_clusters,
             noise_ratio=round(noise_ratio, 4),
             silhouette_score=round(score, 4) if score else None,
+            dbcv_score=round(dbcv_score, 4) if dbcv_score else None,
         )
 
         return result

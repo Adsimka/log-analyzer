@@ -7,6 +7,7 @@
 """
 
 import io
+import re
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -15,6 +16,21 @@ from src.core.config import get_settings
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Замена Drain3-плейсхолдеров на семантически осмысленные слова для SBERT.
+# Порядок важен: сначала специфичные токены, потом общий <*>.
+_PLACEHOLDER_MAP = [
+    ("<IP>", "ADDRESS"),
+    ("<UUID>", "IDENTIFIER"),
+    ("<HEX>", "HEXVALUE"),
+    ("<PORT>", "PORT"),
+    ("<PATH>", "FILEPATH"),
+    ("<NUM>", "NUMBER"),
+    ("<*>", "PARAM"),
+]
+
+# Убираем повторяющиеся подряд PARAM (частый случай: "<*> <*> <*>" → "PARAM")
+_MULTI_PARAM_RE = re.compile(r"(\bPARAM\b(?:\s+\bPARAM\b)+)")
 
 
 class EmbeddingService:
@@ -54,18 +70,38 @@ class EmbeddingService:
             raise RuntimeError("Модель не загружена. Вызовите load_model() сначала.")
         return self._embedding_dim
 
-    def encode(self, texts: list[str]) -> np.ndarray:
+    @staticmethod
+    def preprocess_template(text: str) -> str:
+        """
+        Подготовить текст шаблона для SBERT-кодирования.
+
+        Заменяет Drain3-плейсхолдеры (<*>, <NUM>, <IP>, ...) на осмысленные
+        слова, чтобы SBERT лучше различал семантику шаблонов.
+        """
+        for placeholder, replacement in _PLACEHOLDER_MAP:
+            text = text.replace(placeholder, replacement)
+        # "PARAM PARAM PARAM" → "PARAM" (повторы не несут информации)
+        text = _MULTI_PARAM_RE.sub("PARAM", text)
+        # Убираем лишние пробелы
+        text = " ".join(text.split())
+        return text
+
+    def encode(self, texts: list[str], preprocess: bool = True) -> np.ndarray:
         """
         Закодировать список текстов в эмбеддинги.
 
         Args:
             texts: список строк для векторизации.
+            preprocess: применить замену Drain3-плейсхолдеров (по умолчанию True).
 
         Returns:
             numpy-массив размером (len(texts), embedding_dim).
         """
         if self._model is None:
             raise RuntimeError("Модель не загружена. Вызовите load_model() сначала.")
+
+        if preprocess:
+            texts = [self.preprocess_template(t) for t in texts]
 
         embeddings = self._model.encode(
             texts,
