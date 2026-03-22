@@ -7,7 +7,7 @@
 
 from collections import defaultdict
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -149,6 +149,11 @@ class IngestionService:
             template_counts,
         )
 
+        # Backfill: вычислить эмбеддинги для шаблонов, у которых их нет.
+        # Это случается когда Drain3 state в Redis пережил очистку БД —
+        # шаблоны считаются "не новыми", но в БД создаются впервые без эмбеддинга.
+        await self._backfill_missing_embeddings(session, microservice)
+
         # Batch insert логов
         log_records = [
             LogRecord(
@@ -244,3 +249,49 @@ class IngestionService:
             )
         )
         return dict(result.all())
+
+    async def _backfill_missing_embeddings(
+        self,
+        session: AsyncSession,
+        microservice: str,
+    ) -> None:
+        """
+        Найти шаблоны без эмбеддингов и довычислить их.
+
+        Покрывает случай, когда Drain3 state в Redis пережил очистку БД:
+        шаблоны вставляются как "не новые" (без эмбеддинга), потому что
+        Drain3 уже их знает, но в PostgreSQL они появляются впервые.
+        """
+        result = await session.execute(
+            select(Template.id, Template.drain_cluster_id, Template.template_text).where(
+                Template.microservice == microservice,
+                Template.embedding.is_(None),
+                Template.template_text != "",
+            )
+        )
+        missing = result.all()
+
+        if not missing:
+            return
+
+        templates_to_encode = [
+            (row.drain_cluster_id, row.template_text) for row in missing
+        ]
+        encoded = self._embedder.encode_and_cache(microservice, templates_to_encode)
+
+        for row in missing:
+            if row.drain_cluster_id in encoded:
+                emb_bytes = EmbeddingService.serialize_embedding(encoded[row.drain_cluster_id])
+                await session.execute(
+                    update(Template)
+                    .where(Template.id == row.id)
+                    .values(embedding=emb_bytes)
+                )
+
+        await session.flush()
+
+        logger.info(
+            "embeddings_backfilled",
+            microservice=microservice,
+            count=len(missing),
+        )
