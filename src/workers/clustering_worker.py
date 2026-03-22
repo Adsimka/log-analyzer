@@ -61,6 +61,12 @@ async def run_clustering(ctx: dict) -> None:
                             period=period,
                             clusters=result["num_clusters"],
                         )
+                    else:
+                        logger.debug(
+                            "clustering_period_skipped",
+                            microservice=microservice,
+                            period=period,
+                        )
             except Exception:
                 all_periods_ok = False
                 logger.exception(

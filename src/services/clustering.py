@@ -111,6 +111,14 @@ class ClusteringService:
             hourly_counts_list.append(row.get("hourly_counts", []))
 
         if len(embeddings_list) < s.min_templates_for_clustering:
+            logger.info(
+                "clustering_skipped_no_embeddings",
+                microservice=microservice,
+                period=period,
+                templates_total=len(template_data),
+                templates_with_embedding=len(embeddings_list),
+                min_required=s.min_templates_for_clustering,
+            )
             return None
 
         embeddings = np.array(embeddings_list)
