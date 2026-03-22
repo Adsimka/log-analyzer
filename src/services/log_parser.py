@@ -28,6 +28,7 @@ _MASKING_RULES = [
     (r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "UUID"),
     (r"0x[0-9a-fA-F]+", "HEX"),
     (r"(?<=:)\d+", "PORT"),
+    (r"(/[a-zA-Z0-9._\-]+){2,}", "PATH"),
     (r"\b\d+\b", "NUM"),
 ]
 
