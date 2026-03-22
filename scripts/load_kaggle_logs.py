@@ -428,6 +428,46 @@ def _guess_level(line: str) -> str:
     return "INFO"
 
 
+def _compress_timestamps(logs: list[dict], window: str) -> None:
+    """
+    Линейно ремапит все timestamps из исторического диапазона [min, max]
+    в недавний [now - window, now], сохраняя относительный порядок.
+    """
+    match = re.match(r"^(\d+)(h|d)$", window)
+    if not match:
+        print(f"ERROR: Invalid window format '{window}'. Use e.g. '24h' or '7d'.")
+        sys.exit(1)
+
+    amount, unit = int(match.group(1)), match.group(2)
+    delta = timedelta(hours=amount) if unit == "h" else timedelta(days=amount)
+
+    # Парсим все timestamps
+    parsed_times = []
+    for log in logs:
+        ts = datetime.fromisoformat(log["timestamp"])
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        parsed_times.append(ts)
+
+    ts_min = min(parsed_times)
+    ts_max = max(parsed_times)
+    original_span = (ts_max - ts_min).total_seconds()
+
+    target_end = datetime.now(timezone.utc)
+    target_start = target_end - delta
+    target_span = delta.total_seconds()
+
+    print(f"  Compressing timestamps: [{ts_min.date()} .. {ts_max.date()}] -> last {window}")
+
+    for i, log in enumerate(logs):
+        if original_span > 0:
+            ratio = (parsed_times[i] - ts_min).total_seconds() / original_span
+        else:
+            ratio = 0.0
+        new_ts = target_start + timedelta(seconds=ratio * target_span)
+        log["timestamp"] = new_ts.isoformat()
+
+
 def send_to_api(logs: list[dict], url: str, batch_size: int):
     """Отправить логи в систему кластеризации по батчам."""
     total_sent = 0
@@ -510,6 +550,17 @@ def main():
         help="Uniform sampling from entire file (slower but more diverse templates)",
     )
     parser.add_argument(
+        "--compress-time",
+        type=str,
+        default=None,
+        metavar="WINDOW",
+        help=(
+            "Remap all timestamps into a recent time window (e.g. '24h', '7d'). "
+            "Essential for historical datasets (BGL 2005, etc.) so that "
+            "all logs fit within clustering period windows."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Parse and show stats only, don't send to API",
@@ -565,6 +616,10 @@ def main():
     # Устанавливаем microservice
     for log in logs:
         log["microservice"] = args.service
+
+    # Сжатие timestamps для исторических датасетов
+    if args.compress_time and logs:
+        _compress_timestamps(logs, args.compress_time)
 
     print(f"\nParsed logs: {len(logs)}")
 
