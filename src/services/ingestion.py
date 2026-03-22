@@ -115,23 +115,28 @@ class IngestionService:
         messages = [(log.message, log.stacktrace) for log in logs]
         parsed_results = self._parser.parse_batch(microservice, messages)
 
-        # Собираем новые шаблоны для векторизации
-        new_templates: dict[int, tuple[str, str | None]] = {}
+        # Собираем данные шаблонов: текст и stacktrace для ВСЕХ drain_cluster_id,
+        # а также отмечаем какие из них новые (нужна векторизация).
+        all_templates: dict[int, tuple[str, str | None]] = {}
+        new_template_ids: set[int] = set()
         template_counts: dict[int, int] = defaultdict(int)
 
         for parsed in parsed_results:
             template_counts[parsed.drain_cluster_id] += 1
-            if parsed.is_new_template and parsed.drain_cluster_id not in new_templates:
-                new_templates[parsed.drain_cluster_id] = (
+            if parsed.drain_cluster_id not in all_templates:
+                all_templates[parsed.drain_cluster_id] = (
                     parsed.template_text,
                     parsed.stacktrace_pattern,
                 )
+            if parsed.is_new_template:
+                new_template_ids.add(parsed.drain_cluster_id)
 
         # Векторизация новых шаблонов
         new_embeddings: dict[int, bytes] = {}
-        if new_templates:
+        if new_template_ids:
             templates_to_encode = [
-                (drain_id, text) for drain_id, (text, _) in new_templates.items()
+                (drain_id, all_templates[drain_id][0])
+                for drain_id in new_template_ids
             ]
             encoded = self._embedder.encode_and_cache(microservice, templates_to_encode)
             new_embeddings = {
@@ -144,7 +149,7 @@ class IngestionService:
             session,
             microservice,
             parsed_results,
-            new_templates,
+            all_templates,
             new_embeddings,
             template_counts,
         )
@@ -171,7 +176,7 @@ class IngestionService:
 
         return ServiceIngestStats(
             processed=len(logs),
-            new_templates=len(new_templates),
+            new_templates=len(new_template_ids),
             filtered_out=0,
         )
 
@@ -180,7 +185,7 @@ class IngestionService:
         session: AsyncSession,
         microservice: str,
         parsed_results: list,
-        new_templates: dict[int, tuple[str, str | None]],
+        all_templates: dict[int, tuple[str, str | None]],
         new_embeddings: dict[int, bytes],
         template_counts: dict[int, int],
     ) -> dict[int, int]:
@@ -195,30 +200,22 @@ class IngestionService:
         # Колонки уникального индекса для ON CONFLICT
         conflict_columns = [Template.microservice, Template.drain_cluster_id]
 
-        # Batch upsert: собираем все значения и выполняем одним запросом
+        # Batch upsert: собираем все значения и выполняем одним запросом.
+        # Теперь template_text всегда заполнен из all_templates (Drain3 знает текст
+        # для всех шаблонов, даже "не новых").
         values_list = []
         for drain_id in all_drain_ids:
             count = template_counts[drain_id]
-            if drain_id in new_templates:
-                text_val, st_pattern = new_templates[drain_id]
-                embedding_bytes = new_embeddings.get(drain_id)
-                values_list.append({
-                    "microservice": microservice,
-                    "drain_cluster_id": drain_id,
-                    "template_text": text_val,
-                    "embedding": embedding_bytes,
-                    "stacktrace_pattern": st_pattern,
-                    "log_count": count,
-                })
-            else:
-                values_list.append({
-                    "microservice": microservice,
-                    "drain_cluster_id": drain_id,
-                    "template_text": "",
-                    "embedding": None,
-                    "stacktrace_pattern": None,
-                    "log_count": count,
-                })
+            text_val, st_pattern = all_templates[drain_id]
+            embedding_bytes = new_embeddings.get(drain_id)
+            values_list.append({
+                "microservice": microservice,
+                "drain_cluster_id": drain_id,
+                "template_text": text_val,
+                "embedding": embedding_bytes,
+                "stacktrace_pattern": st_pattern,
+                "log_count": count,
+            })
 
         if values_list:
             stmt = pg_insert(Template).values(values_list)
