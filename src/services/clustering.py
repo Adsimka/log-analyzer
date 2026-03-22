@@ -58,11 +58,22 @@ class ClusteringService:
         """
         s = self._settings
         delta = parse_period(period)
-        cutoff = datetime.now(timezone.utc) - delta
 
         # ──────────────────────────────────
         # Шаг 1: Извлечение данных из БД
         # ──────────────────────────────────
+        # Определяем cutoff от последнего лога сервиса, а не от now(),
+        # чтобы корректно работать с историческими датасетами (BGL 2005 и т.п.)
+        latest_ts = await self._get_latest_timestamp(session, microservice)
+        if latest_ts is None:
+            logger.info(
+                "clustering_skipped_no_logs",
+                microservice=microservice,
+                period=period,
+            )
+            return None
+        cutoff = latest_ts - delta
+
         template_data = await self._fetch_template_data(session, microservice, cutoff)
 
         if len(template_data) < s.min_templates_for_clustering:
@@ -201,7 +212,7 @@ class ClusteringService:
             "microservice": microservice,
             "period": period,
             "computed_at": now.isoformat(),
-            "data_up_to": now.isoformat(),
+            "data_up_to": latest_ts.isoformat(),
             "total_logs": total_logs,
             "unique_templates": len(template_ids),
             "num_clusters": num_clusters,
@@ -230,6 +241,19 @@ class ClusteringService:
         )
 
         return result
+
+    @staticmethod
+    async def _get_latest_timestamp(
+        session: AsyncSession,
+        microservice: str,
+    ) -> datetime | None:
+        """Получить timestamp самого свежего лога для микросервиса."""
+        result = await session.execute(
+            select(func.max(LogRecord.timestamp)).where(
+                LogRecord.microservice == microservice
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def _fetch_template_data(
         self,
