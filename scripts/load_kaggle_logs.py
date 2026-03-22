@@ -86,7 +86,8 @@ _THUNDERBIRD_PATTERN = re.compile(
 )
 
 
-def parse_loghub_csv(filepath: Path, count: int, errors_only: bool, save_gt: bool):
+def parse_loghub_csv(filepath: Path, count: int, errors_only: bool, save_gt: bool,
+                     sample: bool = False):
     """
     Парсить CSV из Loghub: колонки Content, Level/Label, EventId.
 
@@ -96,6 +97,9 @@ def parse_loghub_csv(filepath: Path, count: int, errors_only: bool, save_gt: boo
     В BGL колонка Label определяет аномалию:
       "-" = нормальное сообщение, всё остальное = alert/error.
     Колонка Level (INFO/FATAL) — это severity ОС-компонента, не уровень ошибки.
+
+    Если sample=True — двухпроходное чтение: сначала собираем индексы подходящих
+    строк, затем равномерно семплируем count из них. Это даёт разнообразие шаблонов.
     """
     logs = []
     ground_truth = {}
@@ -115,7 +119,7 @@ def parse_loghub_csv(filepath: Path, count: int, errors_only: bool, save_gt: boo
         node_col = _find_column(fieldnames, ["Node", "node", "NodeRepeat"])
 
         if not content_col:
-            print(f"ОШИБКА: Не найдена колонка с текстом лога. Доступные: {fieldnames}")
+            print(f"ERROR: Content column not found. Available: {fieldnames}")
             sys.exit(1)
 
         # Определяем стратегию фильтрации:
@@ -124,79 +128,148 @@ def parse_loghub_csv(filepath: Path, count: int, errors_only: bool, save_gt: boo
         use_label_strategy = label_col is not None
 
         if use_label_strategy:
-            print(f"Обнаружена колонка Label — фильтрация по alert-меткам (BGL/Thunderbird формат)")
+            print(f"  Label column detected -> filtering by alert labels (BGL/Thunderbird)")
         else:
-            print(f"Колонка Label не найдена — фильтрация по Level")
+            print(f"  No Label column -> filtering by Level")
 
-        for row_idx, row in enumerate(reader):
-            message = row.get(content_col, "").strip()
-            if not message:
-                continue
+    # --- Определяем какие строки подходят (reservoir sampling для --sample) ---
+    if sample:
+        print(f"  Sampling mode: scanning entire file for uniform sampling...")
+        eligible_indices = []
+        with open(filepath, encoding="utf-8", errors="replace") as f:
+            reader = csv.DictReader(f)
+            for row_idx, row in enumerate(reader):
+                if _row_matches_filter(row, content_col, label_col, level_col,
+                                       use_label_strategy, errors_only):
+                    eligible_indices.append(row_idx)
 
-            # Определяем level на основе стратегии
-            if use_label_strategy:
-                raw_label = row.get(label_col, "").strip()
-                if raw_label == "-":
-                    # Нормальное сообщение — не ошибка
-                    if errors_only:
-                        continue
-                    level = "INFO"
-                else:
-                    # Alert — это ошибка
-                    level = "ERROR"
-            else:
-                # Fallback: фильтрация по Level
-                raw_level = row.get(level_col, "").strip().upper() if level_col else "ERROR"
-                if raw_level in ("ERROR", "FATAL", "CRITICAL", "SEVERE", "ERR", "EMERG", "ALERT"):
-                    level = "ERROR"
-                elif raw_level in ("WARN", "WARNING"):
-                    if errors_only:
-                        continue
-                    level = "WARN"
-                elif raw_level in ("INFO", "DEBUG", "TRACE", "NOTICE"):
-                    if errors_only:
-                        continue
-                    level = "INFO"
-                else:
-                    level = "ERROR"
+        total_eligible = len(eligible_indices)
+        print(f"  Total matching rows in file: {total_eligible:,}")
 
-            if errors_only and level != "ERROR":
-                continue
+        if total_eligible <= count:
+            selected_indices = set(eligible_indices)
+        else:
+            selected_indices = set(random.sample(eligible_indices, count))
 
-            # Timestamp — пробуем Time (точный), потом Date
-            ts = None
-            if date_col:
-                ts = _parse_timestamp(row.get(date_col, ""))
-            if ts is None:
-                ts = datetime.now(timezone.utc) - timedelta(
-                    seconds=random.randint(0, 86400)
+        # Второй проход — читаем только выбранные строки
+        with open(filepath, encoding="utf-8", errors="replace") as f:
+            reader = csv.DictReader(f)
+            for row_idx, row in enumerate(reader):
+                if row_idx not in selected_indices:
+                    continue
+                log_entry, gt_entry = _parse_csv_row(
+                    row, row_idx, content_col, label_col, level_col,
+                    use_label_strategy, errors_only, date_col, node_col,
+                    component_col, event_id_col, save_gt
                 )
-
-            # Host: Node (BGL) или Component
-            host = "unknown"
-            if node_col:
-                host = row.get(node_col, "unknown") or "unknown"
-            elif component_col:
-                host = row.get(component_col, "unknown") or "unknown"
-
-            logs.append({
-                "timestamp": ts.isoformat(),
-                "level": level,
-                "message": message[:10000],
-                "microservice": None,  # будет установлен позже
-                "host": host[:128] if host else "unknown",
-                "stacktrace": None,
-            })
-
-            # Ground truth
-            if save_gt and event_id_col:
-                event_id = row.get(event_id_col, "")
-                ground_truth[row_idx] = event_id
-
-            if len(logs) >= count:
-                break
+                if log_entry:
+                    logs.append(log_entry)
+                    if gt_entry is not None:
+                        ground_truth[len(logs) - 1] = gt_entry
+    else:
+        # Без семплирования — берём первые count подходящих строк
+        with open(filepath, encoding="utf-8", errors="replace") as f:
+            reader = csv.DictReader(f)
+            for row_idx, row in enumerate(reader):
+                log_entry, gt_entry = _parse_csv_row(
+                    row, row_idx, content_col, label_col, level_col,
+                    use_label_strategy, errors_only, date_col, node_col,
+                    component_col, event_id_col, save_gt
+                )
+                if log_entry:
+                    logs.append(log_entry)
+                    if gt_entry is not None:
+                        ground_truth[len(logs) - 1] = gt_entry
+                    if len(logs) >= count:
+                        break
 
     return logs, ground_truth
+
+
+def _row_matches_filter(row, content_col, label_col, level_col,
+                        use_label_strategy, errors_only) -> bool:
+    """Быстрая проверка, подходит ли строка под фильтры (для первого прохода)."""
+    message = row.get(content_col, "").strip()
+    if not message:
+        return False
+
+    if use_label_strategy:
+        raw_label = row.get(label_col, "").strip()
+        is_error = raw_label != "-"
+        if errors_only and not is_error:
+            return False
+    else:
+        raw_level = row.get(level_col, "").strip().upper() if level_col else "ERROR"
+        if errors_only:
+            if raw_level not in ("ERROR", "FATAL", "CRITICAL", "SEVERE", "ERR", "EMERG", "ALERT"):
+                return False
+
+    return True
+
+
+def _parse_csv_row(row, row_idx, content_col, label_col, level_col,
+                   use_label_strategy, errors_only, date_col, node_col,
+                   component_col, event_id_col, save_gt):
+    """Парсить одну CSV-строку в лог-запись. Возвращает (log_dict, gt_value) или (None, None)."""
+    message = row.get(content_col, "").strip()
+    if not message:
+        return None, None
+
+    # Определяем level
+    if use_label_strategy:
+        raw_label = row.get(label_col, "").strip()
+        if raw_label == "-":
+            if errors_only:
+                return None, None
+            level = "INFO"
+        else:
+            level = "ERROR"
+    else:
+        raw_level = row.get(level_col, "").strip().upper() if level_col else "ERROR"
+        if raw_level in ("ERROR", "FATAL", "CRITICAL", "SEVERE", "ERR", "EMERG", "ALERT"):
+            level = "ERROR"
+        elif raw_level in ("WARN", "WARNING"):
+            if errors_only:
+                return None, None
+            level = "WARN"
+        elif raw_level in ("INFO", "DEBUG", "TRACE", "NOTICE"):
+            if errors_only:
+                return None, None
+            level = "INFO"
+        else:
+            level = "ERROR"
+
+    if errors_only and level != "ERROR":
+        return None, None
+
+    # Timestamp
+    ts = None
+    if date_col:
+        ts = _parse_timestamp(row.get(date_col, ""))
+    if ts is None:
+        ts = datetime.now(timezone.utc) - timedelta(seconds=random.randint(0, 86400))
+
+    # Host
+    host = "unknown"
+    if node_col:
+        host = row.get(node_col, "unknown") or "unknown"
+    elif component_col:
+        host = row.get(component_col, "unknown") or "unknown"
+
+    log_entry = {
+        "timestamp": ts.isoformat(),
+        "level": level,
+        "message": message[:10000],
+        "microservice": None,
+        "host": host[:128] if host else "unknown",
+        "stacktrace": None,
+    }
+
+    gt_value = None
+    if save_gt and event_id_col:
+        gt_value = row.get(event_id_col, "")
+
+    return log_entry, gt_value
 
 
 def parse_text_logs(filepath: Path, count: int, errors_only: bool):
@@ -432,14 +505,19 @@ def main():
         help="Сохранить ground truth разметку (для Loghub CSV с EventId)",
     )
     parser.add_argument(
+        "--sample",
+        action="store_true",
+        help="Uniform sampling from entire file (slower but more diverse templates)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Только спарсить и показать статистику, не отправлять в API",
+        help="Parse and show stats only, don't send to API",
     )
     parser.add_argument(
         "--output", "-o",
         default=None,
-        help="Сохранить спарсенные логи в JSON (для отладки)",
+        help="Save parsed logs to JSON (for debugging)",
     )
 
     args = parser.parse_args()
@@ -476,7 +554,8 @@ def main():
     ground_truth = {}
     if fmt == "loghub":
         logs, ground_truth = parse_loghub_csv(
-            filepath, args.count, not args.all_levels, args.save_ground_truth
+            filepath, args.count, not args.all_levels, args.save_ground_truth,
+            sample=args.sample
         )
     elif fmt == "thunderbird":
         logs, ground_truth = parse_thunderbird(filepath, args.count, not args.all_levels)
@@ -487,20 +566,36 @@ def main():
     for log in logs:
         log["microservice"] = args.service
 
-    print(f"Спарсено логов: {len(logs)}")
+    print(f"\nParsed logs: {len(logs)}")
 
     # Статистика
     levels = {}
     for log in logs:
         levels[log["level"]] = levels.get(log["level"], 0) + 1
-    print(f"По уровням: {levels}")
+    print(f"By level: {levels}")
 
     hosts = set(log["host"] for log in logs)
-    print(f"Уникальных хостов: {len(hosts)}")
+    print(f"Unique hosts: {len(hosts)}")
+
+    # Уникальные шаблоны (приблизительно по первым 60 символам сообщения)
+    templates = {}
+    for log in logs:
+        # Нормализуем: убираем числа и пути для грубой дедупликации
+        key = re.sub(r'[0-9a-fA-F]{6,}', '<HEX>', log["message"][:80])
+        key = re.sub(r'/\S+', '<PATH>', key)
+        key = re.sub(r'\d+', '<N>', key)
+        templates[key] = templates.get(key, 0) + 1
+    print(f"Unique templates (approx): {len(templates)}")
+
+    # Топ-10 шаблонов
+    sorted_templates = sorted(templates.items(), key=lambda x: -x[1])
+    print(f"\nTop templates:")
+    for tmpl, cnt in sorted_templates[:10]:
+        print(f"  [{cnt:>6}x] {tmpl[:100]}")
 
     if ground_truth:
         unique_events = len(set(ground_truth.values()))
-        print(f"Ground truth событий: {unique_events}")
+        print(f"\nGround truth events: {unique_events}")
 
     # Сохранение в файл
     if args.output:
@@ -517,11 +612,22 @@ def main():
 
     # Отправка
     if args.dry_run:
-        print("\n[DRY RUN] Логи не отправлены в API.")
-        # Показать примеры
-        print("\nПримеры логов:")
-        for log in logs[:5]:
-            print(f"  [{log['level']}] {log['message'][:100]}")
+        print("\n[DRY RUN] Logs not sent to API.")
+        # Показать разнообразные примеры (по одному от каждого шаблона)
+        print("\nDiverse examples:")
+        seen_prefixes = set()
+        shown = 0
+        for log in logs:
+            prefix = re.sub(r'\d+', '#', log["message"][:60])
+            if prefix not in seen_prefixes:
+                seen_prefixes.add(prefix)
+                print(f"  [{log['level']}] {log['message'][:120]}")
+                shown += 1
+                if shown >= 15:
+                    break
+        if not args.sample and len(templates) <= 5:
+            print(f"\n  TIP: Only {len(templates)} unique templates found.")
+            print(f"  Use --sample for uniform sampling across the whole file.")
         return
 
     print(f"\nОтправка в {args.url} батчами по {args.batch_size}...")
