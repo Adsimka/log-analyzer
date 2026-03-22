@@ -88,10 +88,14 @@ _THUNDERBIRD_PATTERN = re.compile(
 
 def parse_loghub_csv(filepath: Path, count: int, errors_only: bool, save_gt: bool):
     """
-    Парсить CSV из Loghub: колонки Content, Level (или Label), EventId.
+    Парсить CSV из Loghub: колонки Content, Level/Label, EventId.
 
-    Формат Loghub CSV:
-    LineId,Date,Time,Pid,Level,Component,Content,EventId,EventTemplate
+    BGL формат:
+    LineId,Label,Timestamp,Date,Node,Time,NodeRepeat,Type,Component,Level,Content,EventId,EventTemplate
+
+    В BGL колонка Label определяет аномалию:
+      "-" = нормальное сообщение, всё остальное = alert/error.
+    Колонка Level (INFO/FATAL) — это severity ОС-компонента, не уровень ошибки.
     """
     logs = []
     ground_truth = {}
@@ -102,49 +106,78 @@ def parse_loghub_csv(filepath: Path, count: int, errors_only: bool, save_gt: boo
         # Определяем имена колонок (разные датасеты — разные колонки)
         fieldnames = reader.fieldnames or []
         content_col = _find_column(fieldnames, ["Content", "content", "Message", "message", "Log", "log_message"])
-        level_col = _find_column(fieldnames, ["Level", "level", "Severity", "severity", "Label", "label"])
+        label_col = _find_column(fieldnames, ["Label", "label"])
+        level_col = _find_column(fieldnames, ["Level", "level", "Severity", "severity"])
         event_id_col = _find_column(fieldnames, ["EventId", "eventid", "event_id", "EventType", "event_type"])
         template_col = _find_column(fieldnames, ["EventTemplate", "event_template", "Template", "template"])
-        date_col = _find_column(fieldnames, ["Date", "date", "Timestamp", "timestamp", "Time", "time"])
-        component_col = _find_column(fieldnames, ["Component", "component", "Source", "source", "Node", "node"])
+        date_col = _find_column(fieldnames, ["Time", "time", "Date", "date", "Timestamp", "timestamp"])
+        component_col = _find_column(fieldnames, ["Component", "component", "Source", "source"])
+        node_col = _find_column(fieldnames, ["Node", "node", "NodeRepeat"])
 
         if not content_col:
             print(f"ОШИБКА: Не найдена колонка с текстом лога. Доступные: {fieldnames}")
             sys.exit(1)
+
+        # Определяем стратегию фильтрации:
+        # Если есть Label (BGL/Thunderbird) — фильтруем по label ("-" = нет ошибки)
+        # Иначе — фильтруем по Level
+        use_label_strategy = label_col is not None
+
+        if use_label_strategy:
+            print(f"Обнаружена колонка Label — фильтрация по alert-меткам (BGL/Thunderbird формат)")
+        else:
+            print(f"Колонка Label не найдена — фильтрация по Level")
 
         for row_idx, row in enumerate(reader):
             message = row.get(content_col, "").strip()
             if not message:
                 continue
 
-            # Определяем level
-            level = "ERROR"
-            if level_col:
-                raw_level = row.get(level_col, "").strip().upper()
-                if raw_level in ("ERROR", "FATAL", "CRITICAL", "SEVERE", "ERR"):
+            # Определяем level на основе стратегии
+            if use_label_strategy:
+                raw_label = row.get(label_col, "").strip()
+                if raw_label == "-":
+                    # Нормальное сообщение — не ошибка
+                    if errors_only:
+                        continue
+                    level = "INFO"
+                else:
+                    # Alert — это ошибка
+                    level = "ERROR"
+            else:
+                # Fallback: фильтрация по Level
+                raw_level = row.get(level_col, "").strip().upper() if level_col else "ERROR"
+                if raw_level in ("ERROR", "FATAL", "CRITICAL", "SEVERE", "ERR", "EMERG", "ALERT"):
                     level = "ERROR"
                 elif raw_level in ("WARN", "WARNING"):
+                    if errors_only:
+                        continue
                     level = "WARN"
                 elif raw_level in ("INFO", "DEBUG", "TRACE", "NOTICE"):
                     if errors_only:
                         continue
-                    level = "WARN"  # Система принимает только ERROR/WARN
+                    level = "INFO"
                 else:
-                    level = "ERROR"  # По умолчанию
+                    level = "ERROR"
 
             if errors_only and level != "ERROR":
                 continue
 
-            # Timestamp
-            ts = _parse_timestamp(row.get(date_col, "")) if date_col else None
+            # Timestamp — пробуем Time (точный), потом Date
+            ts = None
+            if date_col:
+                ts = _parse_timestamp(row.get(date_col, ""))
             if ts is None:
-                # Генерируем timestamp в пределах последних 24 часов
                 ts = datetime.now(timezone.utc) - timedelta(
                     seconds=random.randint(0, 86400)
                 )
 
-            # Host / Component
-            host = row.get(component_col, "unknown") if component_col else "unknown"
+            # Host: Node (BGL) или Component
+            host = "unknown"
+            if node_col:
+                host = row.get(node_col, "unknown") or "unknown"
+            elif component_col:
+                host = row.get(component_col, "unknown") or "unknown"
 
             logs.append({
                 "timestamp": ts.isoformat(),
@@ -288,6 +321,8 @@ def _parse_timestamp(raw: str) -> datetime | None:
         "%Y.%m.%d %H:%M:%S",
         "%Y-%m-%dT%H:%M:%S%z",
         "%Y-%m-%d %H:%M:%S%z",
+        "%Y-%m-%d-%H.%M.%S.%f",  # BGL формат: 2005-06-03-15.42.50.675872
+        "%Y-%m-%d-%H.%M.%S",     # BGL без микросекунд
     ]
     for fmt in formats:
         try:
