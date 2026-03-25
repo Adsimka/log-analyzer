@@ -168,6 +168,7 @@ class ClusteringService:
             min_samples=s.hdbscan_min_samples,
             metric=effective_metric,
             cluster_selection_method=s.hdbscan_cluster_selection_method,
+            gen_min_span_tree=True,
         )
         if s.hdbscan_cluster_selection_epsilon > 0:
             hdbscan_kwargs["cluster_selection_epsilon"] = (
